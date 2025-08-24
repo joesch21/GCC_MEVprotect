@@ -1,0 +1,6 @@
+Flask
+SQLAlchemy
+alembic
+pydantic
+python-dateutil
+pytest
