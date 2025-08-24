@@ -1,5 +1,4 @@
 const express = require('express');
-const fetch = require('node-fetch');
 const router = express.Router();
 
 const PRIVATE_RPC_URL = process.env.PRIVATE_RPC_URL || 'https://bscrpc.pancakeswap.finance';
