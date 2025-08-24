@@ -16,7 +16,7 @@ app.get('/health', (_, res) => {
 
 app.use('/api/0x', require('./routes/zeroex'));
 app.use('/api/relay', require('./routes/relay'));
-app.use('/api/fusion', require('./routes/fusion'));
+app.use('/api/apeswap', require('./routes/apeswap'));
 
 app.listen(PORT, () => {
   console.log(`Server running on ${PORT}`);
