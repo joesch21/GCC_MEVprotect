@@ -1,0 +1,4 @@
+timestamp,tx_hash,from,to,value,token_symbol,token_contract
+2023-09-01T10:00:00Z,0xhash1,0xfrom1,0xto1,1.23,TKN,0xcontract
+2023-09-02 12:30:00+02:00,0xhash2,0xfrom2,0xto2,2.5,TKN,0xcontract
+2023-09-03 05:00:00-05:00,0xhash3,0xfrom3,0xto3,3.0,TKN,0xcontract

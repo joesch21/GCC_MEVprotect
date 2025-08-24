@@ -1,0 +1,17 @@
+<!doctype html>
+<title>Import</title>
+<h1>CSV Import</h1>
+<form action="/api/import/csv" method="post" enctype="multipart/form-data">
+    <label>Source:
+        <select name="source">
+            <option value="token">Token</option>
+            <option value="wallet">Wallet</option>
+            <option value="dexscreener">DexScreener</option>
+        </select>
+    </label>
+    <br/>
+    <input type="file" name="file" multiple>
+    <br/>
+    <input type="submit" value="Upload">
+</form>
+<div id="results"></div>
