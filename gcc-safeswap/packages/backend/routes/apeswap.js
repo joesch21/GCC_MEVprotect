@@ -46,6 +46,14 @@ router.get('/amountsOut', async (req, res) => {
   }
 });
 
+router.get("/pairFor", async (req,res)=>{
+  try {
+    const { tokenA, tokenB, factory, initCodeHash } = req.query;
+    if (!tokenA || !tokenB || !factory || !initCodeHash) return res.status(400).json({ error:"tokenA, tokenB, factory, initCodeHash required" });
+    return res.status(501).json({ error: "pairFor not implemented; use known LP addresses" });
+  } catch(e){ res.status(500).json({ error:e.message }); }
+});
+
 router.get('/pairReserves', async (req, res) => {
   try {
     const { pair } = req.query;
@@ -58,6 +66,22 @@ router.get('/pairReserves', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+router.post("/pairReservesBatch", async (req,res)=>{
+  try {
+    const { pairs=[] } = req.body || {};
+    const p = new JsonRpcProvider(ADDR.PRIVATE_RPC_URL, 56);
+    const results = [];
+    for (const pair of pairs) {
+      try {
+        const c = new Contract(pair, PairABI, p);
+        const [r0,r1] = await c.getReserves();
+        results.push({ pair, reserve0:r0.toString(), reserve1:r1.toString() });
+      } catch (e) { results.push({ pair, error:e.message }); }
+    }
+    res.json({ results });
+  } catch(e){ res.status(500).json({ error:e.message }); }
 });
 
 router.post('/buildTx', async (req, res) => {

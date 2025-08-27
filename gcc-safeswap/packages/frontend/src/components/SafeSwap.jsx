@@ -1,135 +1,136 @@
 import React, { useState } from 'react';
 import TOKENS from '../lib/tokens-bsc';
-import { parseAmount, formatAmount } from '../lib/format';
-import { getSigner, Contract, MaxUint256, getBurner } from '../lib/ethers';
+import { formatAmount, toBase } from '../lib/format';
+import { getSigner, getBurner } from '../lib/ethers';
+import useQuote from '../hooks/useQuote.js';
+import useAllowance from '../hooks/useAllowance.js';
+import RouteInspector from './RouteInspector.jsx';
+import ImpactWarning from './ImpactWarning.jsx';
+import SettingsModal from './SettingsModal.jsx';
+import Toasts from './Toasts.jsx';
 
 const NATIVE = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE';
 
 export default function SafeSwap({ account }) {
   const tokenList = Object.values(TOKENS);
-  const [mode, setMode] = useState('rpc');
-  const [from, setFrom] = useState(TOKENS.BNB.address);
-  const [to, setTo] = useState(TOKENS.GCC.address);
+  window.TOKENS = TOKENS;
+  const [mode, setMode] = useState('0x');
+  const [from, setFrom] = useState(TOKENS.BNB);
+  const [to, setTo] = useState(TOKENS.GCC);
   const [amount, setAmount] = useState('');
-  const [slippage, setSlippage] = useState(50);
   const [quote, setQuote] = useState(null);
-  const [status, setStatus] = useState('');
+  const [settings, setSettings] = useState({ slippageBps:50, deadlineMins:15, approveMax:true });
+  const [toasts, setToasts] = useState([]);
+  const [showSettings, setShowSettings] = useState(false);
+  const [impact, setImpact] = useState(false);
 
-  const tokenFor = (addr) => tokenList.find(t => t.address === addr);
+  const { fetch0x, fetchApe } = useQuote({ chainId:56 });
+  const { ensure } = useAllowance();
 
-  const getQuote = async () => {
+  const addToast = (msg, type='') => setToasts(t => [...t, { msg, type }]);
+
+  const tokenForAddr = (addr) => tokenList.find(t => t.address === addr);
+
+  async function getQuote() {
     try {
-      const sellAmount = parseAmount(amount, tokenFor(from).decimals).toString();
+      const amountBase = toBase(amount, from.decimals);
+      let q;
       if (mode === '0x') {
-        const qs = new URLSearchParams({
-          chainId: '56',
-          sellToken: from,
-          buyToken: to,
-          sellAmount,
-          taker: account || '',
-          slippageBps: slippage
-        });
-        const resp = await fetch(`/api/0x/quote?${qs.toString()}`);
-        const data = await resp.json();
-        if (!resp.ok) throw new Error(data.validationErrors?.[0]?.reason || data.reason || 'quote error');
-        setQuote(data);
-        setStatus('');
-      } else if (mode === 'apeswap') {
-        const routeResp = await fetch(`/api/apeswap/route?${new URLSearchParams({ sellToken: from, buyToken: to })}`);
-        const routeData = await routeResp.json();
-        const resp = await fetch(`/api/apeswap/amountsOut?${new URLSearchParams({ sellToken: from, buyToken: to, amountIn: sellAmount })}`);
-        const data = await resp.json();
-        if (!resp.ok) throw new Error(data.error || 'quote error');
-        setQuote({ buyAmount: data.amounts[data.amounts.length - 1], path: routeData.path });
-        setStatus('');
+        q = await fetch0x({ fromToken:from, toToken:to, amountBase, taker:account||'', slippageBps:settings.slippageBps });
+      } else {
+        q = await fetchApe({ fromToken:from, toToken:to, amountBase });
       }
-    } catch (e) {
-      setStatus(e.message);
+      setQuote(q);
+      addToast('Quote fetched','success');
+      if (q.lpLabel) {
+        try {
+          const pair = '0x5d5Af3462348422B6A6b110799FcF298CFc041D3';
+          const r = await fetch(`/api/apeswap/pairReserves?pair=${pair}`);
+          const j = await r.json();
+          const r0 = BigInt(j.reserve0); const r1 = BigInt(j.reserve1);
+          setImpact(r0 < 5000n*10n**18n || r1 < 5n*10n**18n);
+        } catch { setImpact(false); }
+      } else {
+        setImpact(false);
+      }
+    } catch(e) {
+      addToast(e.message,'error');
     }
-  };
+  }
 
-  const swapMetaMask = async () => {
+  async function swapMetaMask() {
     if (!quote) return;
     try {
-      const signer = await getSigner();
-      let allowanceTarget = quote.allowanceTarget;
-      let txRequest = { to: quote.to, data: quote.data, value: BigInt(quote.value || '0') };
+      const amountBase = toBase(amount, from.decimals);
+      const spender = quote.allowanceTarget || (quote.tx ? quote.tx.to : undefined);
+      if (from.address !== NATIVE) {
+        await ensure({ tokenAddr:from.address, owner:account, spender, amount:amountBase, approveMax:settings.approveMax });
+        addToast('Approve success','success');
+      }
+      let txReq = quote.tx;
       if (mode === 'apeswap') {
-        const sellAmount = parseAmount(amount, tokenFor(from).decimals).toString();
-        const minOut = (BigInt(quote.buyAmount) * BigInt(10000 - slippage)) / BigInt(10000);
+        const minOut = (BigInt(quote.buyAmount) * BigInt(10000 - settings.slippageBps)) / 10000n;
         const build = await fetch('/api/apeswap/buildTx', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ from: account, sellToken: from, buyToken: to, amountIn: sellAmount, minAmountOut: minOut.toString() })
-        });
-        const buildData = await build.json();
-        allowanceTarget = buildData.to;
-        txRequest = { to: buildData.to, data: buildData.data, value: BigInt(buildData.value || '0') };
+          method:'POST',
+          headers:{'content-type':'application/json'},
+          body:JSON.stringify({ from:account, sellToken:from.address, buyToken:to.address, amountIn:amountBase, minAmountOut:minOut.toString() })
+        }).then(r=>r.json());
+        txReq = { to:build.to, data:build.data, value:build.value };
       }
-      if (from !== NATIVE) {
-        const token = new Contract(from, ['function allowance(address owner,address spender) view returns(uint256)','function approve(address spender,uint256) returns (bool)'], signer);
-        const allowance = await token.allowance(account, allowanceTarget);
-        if (allowance < BigInt(parseAmount(amount, tokenFor(from).decimals))) {
-          const txA = await token.approve(allowanceTarget, MaxUint256);
-          await txA.wait();
-        }
-      }
-      const tx = await signer.sendTransaction(txRequest);
-      setStatus(tx.hash);
-    } catch (e) {
-      setStatus(e.message);
+      const signer = await getSigner();
+      const tx = await signer.sendTransaction(txReq);
+      addToast('Tx sent','success');
+      await tx.wait();
+      addToast('Tx confirmed','success');
+    } catch(e) {
+      addToast(e.message,'error');
     }
-  };
+  }
 
-  const swapRelay = async () => {
+  async function swapRelay() {
     if (!quote) return;
     try {
       const wallet = getBurner();
-      let txRequest = { to: quote.to, data: quote.data, value: BigInt(quote.value || '0'), chainId: 56 };
+      let txReq = { ...quote.tx, chainId:56 };
       if (mode === 'apeswap') {
-        const sellAmount = parseAmount(amount, tokenFor(from).decimals).toString();
-        const minOut = (BigInt(quote.buyAmount) * BigInt(10000 - slippage)) / BigInt(10000);
+        const amountBase = toBase(amount, from.decimals);
+        const minOut = (BigInt(quote.buyAmount) * BigInt(10000 - settings.slippageBps)) / 10000n;
         const build = await fetch('/api/apeswap/buildTx', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ from: wallet.address, sellToken: from, buyToken: to, amountIn: sellAmount, minAmountOut: minOut.toString() })
-        });
-        const buildData = await build.json();
-        txRequest = { to: buildData.to, data: buildData.data, value: BigInt(buildData.value || '0'), chainId: 56 };
+          method:'POST', headers:{'content-type':'application/json'},
+          body:JSON.stringify({ from:wallet.address, sellToken:from.address, buyToken:to.address, amountIn:amountBase, minAmountOut:minOut.toString() })
+        }).then(r=>r.json());
+        txReq = { to:build.to, data:build.data, value:build.value, chainId:56 };
       }
-      const signed = await wallet.signTransaction(txRequest);
-      const resp = await fetch('/api/relay/sendRaw', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ rawTx: signed })
-      });
-      const data = await resp.json();
-      setStatus(data.result || data.error || '');
-    } catch (e) {
-      setStatus(e.message);
+      const signed = await wallet.signTransaction(txReq);
+      const data = await fetch('/api/relay/sendRaw', {
+        method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify({ rawTx:signed })
+      }).then(r=>r.json());
+      addToast(data.result ? 'Tx relayed' : data.error, data.result ? 'success' : 'error');
+    } catch(e) {
+      addToast(e.message,'error');
     }
-  };
+  }
 
   return (
     <div className="card">
       <div>
         Mode:
         <select value={mode} onChange={e => setMode(e.target.value)}>
-          <option value="rpc">Private RPC (shielded send)</option>
           <option value="0x">0x RFQ + shielded send</option>
           <option value="apeswap">ApeSwap Router (direct LP)</option>
         </select>
         <span className="badge">SAFE</span>
+        <button style={{float:'right'}} onClick={()=>setShowSettings(true)}>⚙️</button>
       </div>
       <div>
         From:
-        <select value={from} onChange={e => setFrom(e.target.value)}>
+        <select value={from.address} onChange={e => setFrom(tokenForAddr(e.target.value))}>
           {tokenList.map(t => <option key={t.address} value={t.address}>{t.symbol}</option>)}
         </select>
       </div>
       <div>
         To:
-        <select value={to} onChange={e => setTo(e.target.value)}>
+        <select value={to.address} onChange={e => setTo(tokenForAddr(e.target.value))}>
           {tokenList.map(t => <option key={t.address} value={t.address}>{t.symbol}</option>)}
         </select>
       </div>
@@ -137,21 +138,18 @@ export default function SafeSwap({ account }) {
         Amount:
         <input value={amount} onChange={e => setAmount(e.target.value)} />
       </div>
-      <div>
-        Slippage (bps):
-        <input type="number" min="0" max="500" value={slippage} onChange={e => setSlippage(e.target.value)} />
-      </div>
       <button onClick={getQuote}>Get Quote</button>
       {quote && (
         <div>
-          <p>Buy Amount: {formatAmount(BigInt(quote.buyAmount), tokenFor(to).decimals)}</p>
-          {quote.sources && <p className="route-chip">Route: {quote.sources.filter(s => parseFloat(s.proportion) > 0).map(s => s.name).join(' → ')}</p>}
-          {quote.path && <p className="route-chip">Route: {quote.path.map(p => tokenFor(p)?.symbol || '').join(' → ')} (ApeSwap)</p>}
+          <p>Buy Amount: {formatAmount(BigInt(quote.buyAmount), to.decimals)}</p>
+          <RouteInspector text={quote.routeText} lpLabel={quote.lpLabel} />
+          <ImpactWarning show={impact} />
         </div>
       )}
       <button onClick={swapMetaMask}>Swap (MetaMask • Private RPC)</button>
       <button onClick={swapRelay}>Swap (Embedded • Server Relay)</button>
-      {status && <p>{status}</p>}
+      <SettingsModal open={showSettings} onClose={()=>setShowSettings(false)} settings={settings} setSettings={setSettings} />
+      <Toasts items={toasts} />
     </div>
   );
 }
