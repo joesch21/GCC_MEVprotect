@@ -51,3 +51,10 @@ button {
 
 .route-chip{ display:inline-block; margin-top:6px; padding:4px 8px; border:1px solid #334155; border-radius:999px; font-size:12px; color:#cbd5e1; }
 .impact-warn{ color:#fecaca; font-size:12px; margin-top:6px; }
+.modal{ position:fixed; inset:0; display:grid; place-items:center; background:rgba(0,0,0,.5); }
+.modal .card{ background:#0b1220; border:1px solid #263141; border-radius:12px; padding:16px; width:320px; }
+.toasts{ position:fixed; right:16px; bottom:16px; display:flex; flex-direction:column; gap:8px; }
+.toast{ background:#111827; color:#e5e7eb; border:1px solid #374151; border-radius:8px; padding:10px 12px; }
+.toast.success{ border-color:#10b981; }
+.toast.error{ border-color:#ef4444; }
+.error{ color:#fecaca; padding:10px; border:1px solid #7f1d1d; border-radius:8px; background:#450a0a; }

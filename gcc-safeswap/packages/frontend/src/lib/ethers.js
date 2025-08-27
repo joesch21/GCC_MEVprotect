@@ -1,12 +1,14 @@
 import { BrowserProvider, Contract, MaxUint256, Wallet, JsonRpcProvider } from 'ethers';
 
-export const getProvider = () => {
+export const getBrowserProvider = () => {
   if (!window.ethereum) throw new Error('MetaMask not found');
   return new BrowserProvider(window.ethereum);
 };
 
+export const getProvider = getBrowserProvider;
+
 export const getSigner = async () => {
-  const provider = getProvider();
+  const provider = getBrowserProvider();
   return provider.getSigner();
 };
 
