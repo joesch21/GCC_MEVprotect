@@ -11,7 +11,7 @@ import Toasts from './Toasts.jsx';
 
 const NATIVE = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE';
 
-export default function SafeSwap({ account }) {
+export default function SafeSwap({ account, serverSigner }) {
   const tokenList = Object.values(TOKENS);
   window.TOKENS = TOKENS;
   const [mode, setMode] = useState('0x');
@@ -90,18 +90,23 @@ export default function SafeSwap({ account }) {
   async function swapRelay() {
     if (!quote) return;
     try {
-      const wallet = getBurner();
+      const amountBase = toBase(amount, from.decimals);
+      const spender = quote.allowanceTarget || (quote.tx ? quote.tx.to : undefined);
+      if (serverSigner && from.address !== NATIVE) {
+        await ensure({ tokenAddr:from.address, owner:account, spender, amount:amountBase, approveMax:settings.approveMax, serverSigner });
+        addToast('Approve success','success');
+      }
       let txReq = { ...quote.tx, chainId:56 };
       if (mode === 'apeswap') {
-        const amountBase = toBase(amount, from.decimals);
         const minOut = (BigInt(quote.buyAmount) * BigInt(10000 - settings.slippageBps)) / 10000n;
         const build = await fetch('/api/apeswap/buildTx', {
           method:'POST', headers:{'content-type':'application/json'},
-          body:JSON.stringify({ from:wallet.address, sellToken:from.address, buyToken:to.address, amountIn:amountBase, minAmountOut:minOut.toString() })
+          body:JSON.stringify({ from:account, sellToken:from.address, buyToken:to.address, amountIn:amountBase, minAmountOut:minOut.toString() })
         }).then(r=>r.json());
         txReq = { to:build.to, data:build.data, value:build.value, chainId:56 };
       }
-      const signed = await wallet.signTransaction(txReq);
+      const signer = serverSigner || getBurner();
+      const signed = await signer.signTransaction(txReq);
       const data = await fetch('/api/relay/sendRaw', {
         method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify({ rawTx:signed })
       }).then(r=>r.json());
