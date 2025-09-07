@@ -5,7 +5,8 @@ const dotenv = require('dotenv');
 dotenv.config();
 
 const app = express();
-app.use(cors());
+const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || '*';
+app.use(cors({ origin: FRONTEND_ORIGIN }));
 app.use(express.json());
 
 const PORT = process.env.PORT || 8787;
@@ -17,6 +18,7 @@ app.get('/health', (_, res) => {
 app.use('/api/0x', require('./routes/zeroex'));
 app.use('/api/relay', require('./routes/relay'));
 app.use('/api/apeswap', require('./routes/apeswap'));
+app.use('/api/wallet', require('./routes/wallet'));
 
 app.listen(PORT, () => {
   console.log(`Server running on ${PORT}`);

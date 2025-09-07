@@ -15,6 +15,7 @@ The project is organised as a monorepo with separate frontend and backend packag
 * Token swap card supporting BNB, WBNB, GCC, USDT and BTCB.
 * Calls to a backend proxy for 0x pricing/quotes, ApeSwap routing and raw transaction relays.
 * Embedded burner wallet for demo server relays (not for production use).
+* Condor Wallet tool for generating and embedding encrypted wallets into PNG files.
 
 ## Quick Start
 
@@ -54,4 +55,14 @@ The “Use Private RPC” button instructs MetaMask to switch to BNB Chain using
 * GCC gating (NFT or token balance checks) is planned but not yet active.
 
 Screenshots or GIFs should demonstrate the full flow: connect → switch RPC → quote → approve → swap.
+
+## Condor Wallet
+
+The frontend now includes a **Condor Wallet** drawer (Tools → Condor Wallet) for creating ephemeral ECDSA wallets and protecting them with a passphrase.  The backend exposes three routes:
+
+* `POST /api/wallet/generate` – returns a temporary handle, address and fingerprint.
+* `POST /api/wallet/embed` – accepts a PNG, passphrase and handle and streams back a stego PNG containing the encrypted key.
+* `POST /api/wallet/decode` – extracts and decrypts an embedded key from a PNG, returning its address and fingerprint.
+
+Private keys are kept only in memory on the server for up to five minutes and are never logged.  PNG uploads are limited to 5 MB.
 

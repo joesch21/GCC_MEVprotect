@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import Connect from './components/Connect.jsx';
 import SafeSwap from './components/SafeSwap.jsx';
+import WalletDrawer from './components/WalletDrawer.jsx';
 import useShieldStatus from './hooks/useShieldStatus.js';
 
 export default function App() {
   const [account, setAccount] = useState(null);
   const { shieldOn, markPrivateUsed, refreshShield } = useShieldStatus();
+  const [walletOpen, setWalletOpen] = useState(false);
 
   useEffect(() => {
     if (!window.ethereum) return;
@@ -49,12 +51,14 @@ export default function App() {
         <div>
           <button onClick={switchRpc}>Use Private RPC</button>
           <Connect account={account} setAccount={setAccount} />
+          <button onClick={() => setWalletOpen(true)}>Condor Wallet</button>
           <span className={`pill ${shieldOn ? 'shield-on' : 'shield-off'}`}>
             {shieldOn ? 'MEV-Shield ON' : 'MEV-Shield OFF'}
           </span>
         </div>
       </header>
       <SafeSwap account={account} />
+      <WalletDrawer open={walletOpen} onClose={() => setWalletOpen(false)} />
     </>
   );
 }
