@@ -58,3 +58,6 @@ button {
 .toast.success{ border-color:#10b981; }
 .toast.error{ border-color:#ef4444; }
 .error{ color:#fecaca; padding:10px; border:1px solid #7f1d1d; border-radius:8px; background:#450a0a; }
+.wallet-drawer{ position:fixed; top:0; right:0; width:300px; height:100%; background:#111; border-left:1px solid #bfa33a; padding:1rem; overflow:auto; }
+.fingerprint{ display:inline-block; background:#333; padding:2px 4px; margin-left:4px; font-size:0.8rem; }
+.dropzone{ border:1px dashed #334155; padding:1rem; text-align:center; cursor:pointer; margin-top:0.5rem; }
