@@ -4,6 +4,13 @@ const multer = require('multer');
 const { Wallet } = require('ethers');
 const rateLimit = require('express-rate-limit');
 
+let decodeRust;
+try {
+  decodeRust = require('condor_wallet').decode_wallet_from_image;
+} catch (err) {
+  decodeRust = null;
+}
+
 const router = express.Router();
 const upload = multer({ limits: { fileSize: 5 * 1024 * 1024 } });
 
@@ -113,27 +120,39 @@ router.post('/unlock', upload.single('image'), (req, res) => {
     if (!pass || pass.length < 8 || !req.file) {
       return res.status(400).json({ error: 'invalid input' });
     }
-    const buf = req.file.buffer;
-    const idx = buf.lastIndexOf(MARKER);
-    if (idx === -1) {
-      return res.status(400).json({ error: 'no payload' });
+
+    let address, fingerprint, privateKey;
+
+    if (decodeRust) {
+      const out = decodeRust(req.file.buffer, pass);
+      address = out.address;
+      fingerprint = out.fingerprint;
+      privateKey = out.private_key || out.privateKey;
+    } else {
+      const buf = req.file.buffer;
+      const idx = buf.lastIndexOf(MARKER);
+      if (idx === -1) {
+        return res.status(400).json({ error: 'no payload' });
+      }
+      const payloadStr = buf.slice(idx + MARKER.length).toString();
+      const payload = JSON.parse(payloadStr);
+      const salt = Buffer.from(payload.salt, 'base64');
+      const nonce = Buffer.from(payload.nonce, 'base64');
+      const tag = Buffer.from(payload.tag, 'base64');
+      const ct = Buffer.from(payload.ct, 'base64');
+      const key = crypto.pbkdf2Sync(pass, salt, 200000, 32, 'sha256');
+      const decipher = crypto.createDecipheriv('aes-256-gcm', key, nonce);
+      decipher.setAuthTag(tag);
+      const pkBuf = Buffer.concat([decipher.update(ct), decipher.final()]);
+      privateKey = '0x' + pkBuf.toString('hex');
+      const wallet = new Wallet(privateKey);
+      address = wallet.address;
+      fingerprint = crypto.createHash('sha256').update(pkBuf).digest().slice(0, 4).toString('hex');
     }
-    const payloadStr = buf.slice(idx + MARKER.length).toString();
-    const payload = JSON.parse(payloadStr);
-    const salt = Buffer.from(payload.salt, 'base64');
-    const nonce = Buffer.from(payload.nonce, 'base64');
-    const tag = Buffer.from(payload.tag, 'base64');
-    const ct = Buffer.from(payload.ct, 'base64');
-    const key = crypto.pbkdf2Sync(pass, salt, 200000, 32, 'sha256');
-    const decipher = crypto.createDecipheriv('aes-256-gcm', key, nonce);
-    decipher.setAuthTag(tag);
-    const pkBuf = Buffer.concat([decipher.update(ct), decipher.final()]);
-    const privateKey = '0x' + pkBuf.toString('hex');
-    const wallet = new Wallet(privateKey);
-    const fingerprint = crypto.createHash('sha256').update(pkBuf).digest().slice(0, 4).toString('hex');
+
     const sessionId = crypto.randomUUID();
-    sessions.set(sessionId, { pkHex: privateKey, address: wallet.address, exp: Date.now() + SESS_TTL });
-    res.json({ sessionId, address: wallet.address, fingerprint });
+    sessions.set(sessionId, { pkHex: privateKey, address, exp: Date.now() + SESS_TTL });
+    res.json({ sessionId, address, fingerprint });
   } catch (err) {
     res.status(422).json({ error: err.message });
   } finally {

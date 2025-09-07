@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Connect from './components/Connect.jsx';
 import SafeSwap from './components/SafeSwap.jsx';
-import UnlockModal from './components/UnlockModal.jsx';
+import WalletUnlockModal from './components/WalletUnlockModal.jsx';
 import useShieldStatus from './hooks/useShieldStatus.js';
 import { ServerSigner } from './lib/serverSigner.js';
 
@@ -64,7 +64,7 @@ export default function App() {
         </div>
       </header>
       <SafeSwap account={activeAccount} serverSigner={signer} />
-      <UnlockModal
+      <WalletUnlockModal
         open={unlockOpen}
         onClose={() => setUnlockOpen(false)}
         onUnlocked={setServerWallet}

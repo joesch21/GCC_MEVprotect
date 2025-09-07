@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import DropZone from './DropZone.jsx';
 import Fingerprint from './Fingerprint.jsx';
 
-export default function UnlockModal({ open, onClose, onUnlocked, onUseForSigning, onDestroy }) {
+export default function WalletUnlockModal({ open, onClose, onUnlocked, onUseForSigning, onDestroy }) {
   const [file, setFile] = useState(null);
   const [pass, setPass] = useState('');
   const [msg, setMsg] = useState('');
