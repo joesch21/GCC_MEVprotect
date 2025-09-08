@@ -36,23 +36,34 @@ export default function App() {
       <div className="bg-overlay"><div className="bg-matrix" /></div>
 
       <header className="nav">
-        <div className="brand">
-          <span className="logo">🜲</span>
-          <span>GCC SafeSwap</span>
-        </div>
-        <ul className="nav__links">
-          <li><a href="#">Docs</a></li>
-          <li><a href="#">Staking</a></li>
-          <li><a href="#">NFT Vault</a></li>
-        </ul>
-        <div className="nav__right">
-          <Connect unlockedAddr={useServer && serverWallet ? serverWallet.address : ''} />
-          <button className="primary" onClick={() => setUnlockOpen(true)}>Unlock Wallet</button>
-          <span className={`pill ${shieldOn ? 'pill--success' : 'pill--warning'}`}>
-            {shieldOn ? 'MEV-Shield ON' : 'MEV-Shield OFF'}
-          </span>
+        <div className="nav__inner container">
+          <a href="/" className="brand">
+            <img src="/assets/logo.jpeg" alt="Condor Logo" />
+            <span>GCC SafeSwap</span>
+          </a>
+          <div className="nav__links">
+            <a href="/dashboard">Dashboard</a>
+            <a href="/stake">Stake</a>
+            <a href="/swap" className="pill pill--accent">Swap</a>
+          </div>
+          <Connect />
         </div>
       </header>
+
+      <section className="hero container">
+        <div className="hero__copy">
+          <h1><span className="glow">SafeSwap</span> for Condorians</h1>
+          <p className="lead">Private, MEV-protected swaps with Apple-style simplicity.</p>
+          <div className="cta">
+            <button className="btn btn--primary">Start Swapping</button>
+          </div>
+        </div>
+        <div className="hero__visual">
+          <div className="holo">
+            <img src="/assets/matrix.png" alt="Condor" className="condor-visual"/>
+          </div>
+        </div>
+      </section>
 
       <main>
         <section className="holo">
@@ -72,11 +83,15 @@ export default function App() {
       />
 
       <footer className="footer">
-        <div className="footer__inner">
-          <span>© 2025 — Making Volatility Great Again</span>
-          <span><a href="#">Twitter</a><a href="#">Discord</a></span>
+        <div className="footer__inner container">
+          <span>© {new Date().getFullYear()} Condor Capital — Making Volatility Great Again</span>
+          <nav>
+            <a href="/terms">Terms</a>
+            <a href="/privacy">Privacy</a>
+          </nav>
         </div>
       </footer>
+
     </>
   );
 }
