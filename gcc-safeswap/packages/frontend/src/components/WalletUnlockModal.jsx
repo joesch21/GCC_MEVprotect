@@ -49,23 +49,25 @@ export default function WalletUnlockModal({ open, onClose, onUnlocked, onUseForS
   };
 
   return (
-    <div className="wallet-drawer">
-      <button onClick={onClose} style={{ float: 'right' }}>Close</button>
-      <h2>Unlock Condor Wallet</h2>
-      <input type="password" placeholder="Passphrase" value={pass} onChange={e => setPass(e.target.value)} />
-      <DropZone onFile={setFile} />
-      <button onClick={unlock}>Unlock</button>
-      {msg && <p className="error">{msg}</p>}
-      {wallet && (
-        <div>
-          <p>Unlocked • {wallet.address.slice(0, 6)}…{wallet.address.slice(-4)}</p>
-          <Fingerprint value={wallet.fingerprint} />
-          <label>
-            <input type="checkbox" checked={useSigner} onChange={toggleUse} /> Use as Signing Wallet
-          </label>
-          <button onClick={destroy}>Lock &amp; Destroy</button>
-        </div>
-      )}
+    <div className="mmx-dialog">
+      <div className="mmx-dialog__inner stack">
+        <button className="btn" onClick={onClose} style={{ alignSelf: 'flex-end' }}>Close</button>
+        <h2>Unlock Condor Wallet</h2>
+        <input type="password" placeholder="Passphrase" value={pass} onChange={e => setPass(e.target.value)} />
+        <DropZone onFile={setFile} />
+        <button className="btn btn--primary" onClick={unlock}>Unlock</button>
+        {msg && <p className="error">{msg}</p>}
+        {wallet && (
+          <div className="stack">
+            <p>Unlocked • {wallet.address.slice(0, 6)}…{wallet.address.slice(-4)}</p>
+            <Fingerprint value={wallet.fingerprint} />
+            <label>
+              <input type="checkbox" checked={useSigner} onChange={toggleUse} /> Use as Signing Wallet
+            </label>
+            <button className="btn" onClick={destroy}>Lock &amp; Destroy</button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
