@@ -49,8 +49,8 @@ export default function App() {
 
       <header className="nav">
         <div className="nav__inner container">
-          <a href="/" className="brand">
-            <img src="/assets/logo.jpeg" alt="Condor Logo" />
+          <a href="/" className="brand" aria-label="GCC SafeSwap Home">
+            <img src="/assets/logo.jpeg" alt="Condor Logo" className="logo" />
             <span>GCC SafeSwap</span>
           </a>
           <div className="nav__links">
@@ -70,11 +70,11 @@ export default function App() {
             <button className="btn btn--primary" onClick={scrollToSwap}>Start Swapping</button>
           </div>
         </div>
-        <div className="hero__visual">
+        {/* <div className="hero__visual">
           <div className="holo">
-            <img src="/assets/matrix.png" alt="Condor" className="condor-visual"/>
+            <img src="/assets/matrix.png" alt="Condor" className="condor-visual" />
           </div>
-        </div>
+        </div> */}
       </section>
 
       <main>
