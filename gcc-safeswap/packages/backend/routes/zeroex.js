@@ -24,7 +24,8 @@ router.get('/quote', async (req, res) => {
       headers: ZEROEX_API_KEY ? { '0x-api-key': ZEROEX_API_KEY } : {}
     });
     const data = await resp.json();
-    res.status(resp.status).json(data);
+    const isNoRoute = resp.status === 404 || /no route/i.test(JSON.stringify(data));
+    res.status(isNoRoute ? 404 : resp.status).json(data);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

@@ -29,6 +29,7 @@ app.use('/api/0x', require('./routes/zeroex'));
 app.use('/api/relay', require('./routes/relay'));
 app.use('/api/apeswap', require('./routes/apeswap'));
 app.use('/api/wallet', require('./routes/wallet'));
+app.use('/api/dex', require('./routes/dex'));
 
 app.listen(PORT, () => {
   console.log(`Server running on ${PORT}`);
