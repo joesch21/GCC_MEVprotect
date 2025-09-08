@@ -235,3 +235,56 @@ footer{ margin-top:auto; }
   .pill{ padding:6px 10px; font-size:.8rem; }
   .footer__inner{ font-size:.85rem; }
 }
+
+/* Brand text in neon */
+.brand--neon {
+  color: var(--brand-green);
+  text-shadow: 0 0 10px rgba(0, 255, 204, 0.45);
+  font-weight: 700;
+  letter-spacing: .3px;
+}
+.brand .logo { display: none !important; }
+
+/* Header spacing on mobile */
+@media (max-width: 600px){
+  header.nav { padding: 6px 0; }
+  .nav__links { gap: 12px; }
+  .nav__links a { font-size: 0.95rem; }
+}
+
+/* Container breathes less on narrow screens */
+@media (max-width: 430px){
+  .shell, .container {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+}
+
+/* Hero title scale & spacing (mobile) */
+.hero { padding: 28px 0 6px; }
+.hero .lead { font-size: 1rem; }
+@media (max-width: 430px){
+  .hero h1 { font-size: 1.6rem; line-height: 1.2; }
+}
+
+/* Swap card should fill phone width nicely */
+.holo { max-width: 560px; }
+@media (max-width: 600px){
+  .holo { max-width: 100%; margin: 20px auto; border-radius: 14px; }
+  .holo .card { padding: 16px; }
+}
+
+/* Inputs & buttons full-width and comfy on phones */
+@media (max-width: 600px){
+  .row { flex-direction: column; align-items: stretch; gap: 12px; }
+  .row input, .row select { width: 100%; padding: 14px; }
+  .actions { flex-direction: column; gap: 12px; }
+  button, .btn { width: 100%; min-height: 48px; padding: 14px 16px; }
+}
+
+/* Keep swap card clearly above background */
+.holo, main, header.nav, .footer { position: relative; z-index: 1; }
+.bg-overlay, .bg-matrix { z-index: -1; }
+
+/* Ensure brand color for the app title anywhere */
+.brand--neon span { color: var(--brand-green); }

@@ -49,8 +49,7 @@ export default function App() {
 
       <header className="nav">
         <div className="nav__inner container">
-          <a href="/" className="brand" aria-label="GCC SafeSwap Home">
-            <img src="/assets/logo.jpeg" alt="Condor Logo" className="logo" />
+          <a href="/" className="brand brand--neon" aria-label="GCC SafeSwap Home">
             <span>GCC SafeSwap</span>
           </a>
           <div className="nav__links">
