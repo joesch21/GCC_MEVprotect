@@ -5,6 +5,7 @@ import WalletUnlockModal from './components/WalletUnlockModal.jsx';
 import useShieldStatus from './hooks/useShieldStatus.js';
 import { ServerSigner } from './lib/serverSigner.js';
 import { getBrowserProvider } from './lib/ethers.js';
+import LogTail from "./components/LogTail.jsx";
 
 export default function App() {
   const [account, setAccount] = useState(null);
@@ -60,6 +61,7 @@ export default function App() {
           </div>
         </section>
       </main>
+      <LogTail />
 
       <WalletUnlockModal
         open={unlockOpen}

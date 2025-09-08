@@ -18,6 +18,7 @@ router.get('/price', async (req, res) => {
 
 router.get('/quote', async (req, res) => {
   try {
+    console.log("0x/quote params:", Object.fromEntries(new URLSearchParams(req.url.split("?")[1]||"")));
     const qs = new URLSearchParams(req.query).toString();
     const resp = await fetch(`https://api.0x.org/swap/v2/quote?${qs}`, {
       headers: ZEROEX_API_KEY ? { '0x-api-key': ZEROEX_API_KEY } : {}

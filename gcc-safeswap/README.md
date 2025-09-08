@@ -35,6 +35,12 @@ yarn dev
 
 The frontend (Vite) proxies `/api/*` requests to the backend server.
 
+### Quote Debugging (Network Tab)
+
+1. Open DevTools → Network and enable "Fetch/XHR".
+2. Click <kbd>Get Quote</kbd>. You should see a request like `/api/0x/quote?...`.
+3. Click the request and check the **Response** tab. If the status is 4xx, copy the `validationErrors` or `error` value and paste it into the Debug Log using the Copy button.
+
 ## Environment
 
 All secrets such as aggregator API keys, custom private RPC URLs and address overrides are loaded from environment variables on the backend.  Never expose secrets in the frontend bundle.
