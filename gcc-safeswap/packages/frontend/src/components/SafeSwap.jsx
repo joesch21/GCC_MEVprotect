@@ -2,8 +2,9 @@ import React, { useState } from 'react';
 import { BrowserProvider, Contract, formatUnits } from 'ethers';
 import TOKENS from '../lib/tokens-bsc.js';
 import { formatAmount, toBase } from '../lib/format';
-import { getSigner, getBurner } from '../lib/ethers';
+import { getSigner, getBurner, getBrowserProvider } from '../lib/ethers';
 import useQuote from '../hooks/useQuote.js';
+import { log } from "../lib/logger.js";
 import useAllowance from '../hooks/useAllowance.js';
 import RouteInspector from './RouteInspector.jsx';
 import ImpactWarning from './ImpactWarning.jsx';
@@ -25,7 +26,7 @@ export default function SafeSwap({ account, serverSigner }) {
   const [showSettings, setShowSettings] = useState(false);
   const [impact, setImpact] = useState(false);
 
-  const { fetch0x, fetchApe } = useQuote({ chainId:56 });
+  const { fetchApe } = useQuote({ chainId:56 });
   const { ensure } = useAllowance();
 
   const GAS_BUFFER_BNB = 0.002; // ~2e-3 BNB ~ ~$1-ish depending on price
@@ -34,30 +35,74 @@ export default function SafeSwap({ account, serverSigner }) {
 
   const tokenForAddr = (addr) => tokenList.find(t => t.address === addr);
 
+  const [status, setStatus] = useState("");
+  const CHAIN_ID = 56;
+  const nativeLabel = (t) => t.isNative ? "BNB" : t.address;
+
   async function getQuote() {
     try {
-      const amountBase = toBase(amount, from.decimals);
-      let q;
-      if (mode === '0x') {
-        q = await fetch0x({ fromToken:from, toToken:to, amountBase, taker:account||'', slippageBps:settings.slippageBps });
-      } else {
-        q = await fetchApe({ fromToken:from, toToken:to, amountBase });
+      if (mode !== '0x') {
+        const amountBase = toBase(amount, from.decimals);
+        const q = await fetchApe({ fromToken:from, toToken:to, amountBase });
+        setQuote(q);
+        setStatus("Quote ready.");
+        if (q.lpLabel) {
+          try {
+            const pair = '0x5d5Af3462348422B6A6b110799FcF298CFc041D3';
+            const r = await fetch(`/api/apeswap/pairReserves?pair=${pair}`);
+            const j = await r.json();
+            const r0 = BigInt(j.reserve0); const r1 = BigInt(j.reserve1);
+            setImpact(r0 < 5000n*10n**18n || r1 < 5n*10n**18n);
+          } catch { setImpact(false); }
+        } else { setImpact(false); }
+        return;
       }
-      setQuote(q);
-      addToast('Quote fetched','success');
-      if (q.lpLabel) {
+
+      setStatus("Fetching quote…");
+
+      let taker = "";
+      try { taker = (await getBrowserProvider().send("eth_accounts", []))?.[0] || ""; }
+      catch {}
+
+      const sellAmount = toBase(amount, from.decimals).toString();
+      const qs = new URLSearchParams({
+        chainId: String(CHAIN_ID),
+        sellToken: nativeLabel(from),
+        buyToken: nativeLabel(to),
+        sellAmount,
+        slippageBps: String(settings.slippageBps),
+      });
+      if (taker) qs.set("taker", taker);
+
+      const url = `/api/0x/quote?${qs.toString()}`;
+      log("QUOTE →", url);
+      const r = await fetch(url);
+      const j = await r.json().catch(()=> ({}));
+      log("QUOTE ⇠", r.status, j);
+
+      if (!r.ok || j.code || j.error) {
+        const reason = j.validationErrors?.[0]?.reason || j.reason || j.error || `HTTP ${r.status}`;
+        setQuote(null);
+        setStatus(`Quote error: ${reason}`);
+        log("QUOTE ERROR:", reason);
+        return;
+      }
+
+      setQuote(j);
+      setStatus("Quote ready.");
+      if (j.lpLabel) {
         try {
           const pair = '0x5d5Af3462348422B6A6b110799FcF298CFc041D3';
-          const r = await fetch(`/api/apeswap/pairReserves?pair=${pair}`);
-          const j = await r.json();
-          const r0 = BigInt(j.reserve0); const r1 = BigInt(j.reserve1);
+          const r2 = await fetch(`/api/apeswap/pairReserves?pair=${pair}`);
+          const j2 = await r2.json();
+          const r0 = BigInt(j2.reserve0); const r1 = BigInt(j2.reserve1);
           setImpact(r0 < 5000n*10n**18n || r1 < 5n*10n**18n);
         } catch { setImpact(false); }
-      } else {
-        setImpact(false);
-      }
-    } catch(e) {
-      addToast(e.message,'error');
+      } else { setImpact(false); }
+    } catch (e) {
+      setQuote(null);
+      setStatus(`Quote failed: ${e.message || String(e)}`);
+      log("QUOTE FAILED:", e);
     }
   }
 
@@ -174,6 +219,7 @@ export default function SafeSwap({ account, serverSigner }) {
         <button className="btn btn--primary" type="button" onClick={onMax}>Max</button>
       </div>
       <button className="primary" onClick={getQuote}>Get Quote</button>
+      {status && <p>{status}</p>}
       {quote && (
         <div>
           <p>Buy Amount: {formatAmount(BigInt(quote.buyAmount), to.decimals)}</p>

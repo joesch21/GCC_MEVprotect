@@ -1,0 +1,8 @@
+{
+  "name": "gcc-safeswap",
+  "private": true,
+  "scripts": {
+    "probe:quote": "curl \"http://localhost:8787/api/0x/quote?chainId=56&sellToken=WBNB&buyToken=USDT&sellAmount=10000000000000000&slippageBps=50\""
+  }
+}
+

@@ -9,6 +9,16 @@ const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || '*';
 app.use(cors({ origin: FRONTEND_ORIGIN }));
 app.use(express.json());
 
+function reqLog(req, res, next) {
+  const t0 = Date.now();
+  res.on("finish", () => {
+    const ms = Date.now() - t0;
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.originalUrl} -> ${res.statusCode} ${ms}ms`);
+  });
+  next();
+}
+app.use(reqLog);
+
 const PORT = process.env.PORT || 8787;
 
 app.get('/health', (_, res) => {
