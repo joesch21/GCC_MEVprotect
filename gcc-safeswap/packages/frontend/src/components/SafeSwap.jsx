@@ -117,17 +117,16 @@ export default function SafeSwap({ account, serverSigner }) {
   }
 
   return (
-    <div className="holo">
-      <div className="card">
-        <div>
-          Mode:
-          <select value={mode} onChange={e => setMode(e.target.value)}>
-            <option value="0x">0x RFQ + shielded send</option>
-            <option value="apeswap">ApeSwap Router (direct LP)</option>
-          </select>
-          <span className="pill pill--accent">SAFE</span>
-          <button className="btn btn--primary" style={{float:'right'}} onClick={()=>setShowSettings(true)}>⚙️</button>
-        </div>
+    <>
+      <div>
+        Mode:
+        <select value={mode} onChange={e => setMode(e.target.value)}>
+          <option value="0x">0x RFQ + shielded send</option>
+          <option value="apeswap">ApeSwap Router (direct LP)</option>
+        </select>
+        <span className="pill pill--accent">SAFE</span>
+        <button className="primary" style={{float:'right'}} onClick={()=>setShowSettings(true)}>⚙️</button>
+      </div>
       <div>
         From:
         <select value={from.address} onChange={e => setFrom(tokenForAddr(e.target.value))}>
@@ -144,7 +143,7 @@ export default function SafeSwap({ account, serverSigner }) {
         Amount:
         <input value={amount} onChange={e => setAmount(e.target.value)} />
       </div>
-      <button className="btn btn--primary" onClick={getQuote}>Get Quote</button>
+      <button className="primary" onClick={getQuote}>Get Quote</button>
       {quote && (
         <div>
           <p>Buy Amount: {formatAmount(BigInt(quote.buyAmount), to.decimals)}</p>
@@ -152,11 +151,10 @@ export default function SafeSwap({ account, serverSigner }) {
           <ImpactWarning show={impact} />
         </div>
       )}
-      <button className="btn btn--success" onClick={swapMetaMask}>Swap (MetaMask • Private RPC)</button>
-      <button className="btn btn--success" onClick={swapRelay}>Swap (Embedded • Server Relay)</button>
+      <button className="success" onClick={swapMetaMask}>Swap (MetaMask • Private RPC)</button>
+      <button className="success" onClick={swapRelay}>Swap (Embedded • Server Relay)</button>
       <SettingsModal open={showSettings} onClose={()=>setShowSettings(false)} settings={settings} setSettings={setSettings} />
       <Toasts items={toasts} />
-      </div>
-    </div>
+    </>
   );
 }

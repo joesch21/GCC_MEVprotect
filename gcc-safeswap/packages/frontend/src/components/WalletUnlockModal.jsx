@@ -49,13 +49,13 @@ export default function WalletUnlockModal({ open, onClose, onUnlocked, onUseForS
   };
 
   return (
-    <div className="mmx-dialog">
-      <div className="mmx-dialog__inner stack">
-        <button className="btn" onClick={onClose} style={{ alignSelf: 'flex-end' }}>Close</button>
+    <div className="modal">
+      <div className="card stack">
+        <button onClick={onClose} style={{ alignSelf: 'flex-end' }}>Close</button>
         <h2>Unlock Condor Wallet</h2>
         <input type="password" placeholder="Passphrase" value={pass} onChange={e => setPass(e.target.value)} />
         <DropZone onFile={setFile} />
-        <button className="btn btn--primary" onClick={unlock}>Unlock</button>
+        <button className="primary" onClick={unlock}>Unlock</button>
         {msg && <p className="error">{msg}</p>}
         {wallet && (
           <div className="stack">
@@ -64,7 +64,7 @@ export default function WalletUnlockModal({ open, onClose, onUnlocked, onUseForS
             <label>
               <input type="checkbox" checked={useSigner} onChange={toggleUse} /> Use as Signing Wallet
             </label>
-            <button className="btn" onClick={destroy}>Lock &amp; Destroy</button>
+            <button onClick={destroy}>Lock &amp; Destroy</button>
           </div>
         )}
       </div>

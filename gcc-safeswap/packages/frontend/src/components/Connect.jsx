@@ -14,7 +14,7 @@ export default function Connect({ account, setAccount, className = '' }) {
   };
 
   return (
-    <button className={`btn ${className}`} onClick={connect}>
+    <button className={className} onClick={connect}>
       {account ? shorten(account) : 'Connect MetaMask'}
     </button>
   );

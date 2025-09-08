@@ -23,23 +23,35 @@ export default function App() {
 
   return (
     <>
-      <div className="bg-overlay"><div className="bg-matrix"></div></div>
-      <nav className="nav">
-        <div className="brand"><span className="logo">🜲</span><span>GCC SafeSwap</span></div>
+      <div className="bg-overlay"><div className="bg-matrix" /></div>
+
+      <header className="nav">
+        <div className="brand">
+          <span className="logo">🜲</span>
+          <span>GCC SafeSwap</span>
+        </div>
         <ul className="nav__links">
           <li><a href="#">Docs</a></li>
           <li><a href="#">Staking</a></li>
           <li><a href="#">NFT Vault</a></li>
         </ul>
-        <div className="nav__links">
-          <Connect account={account} setAccount={setAccount} className="btn" />
-          <button className="btn btn--primary" onClick={() => setUnlockOpen(true)}>Unlock Wallet</button>
+        <div className="nav__right">
+          <Connect account={account} setAccount={setAccount} />
+          <button className="primary" onClick={() => setUnlockOpen(true)}>Unlock Wallet</button>
           <span className={`pill ${shieldOn ? 'pill--success' : 'pill--warning'}`}>
             {shieldOn ? 'MEV-Shield ON' : 'MEV-Shield OFF'}
           </span>
         </div>
-      </nav>
-      <SafeSwap account={activeAccount} serverSigner={signer} />
+      </header>
+
+      <main>
+        <section className="holo">
+          <div className="card">
+            <SafeSwap account={activeAccount} serverSigner={signer} />
+          </div>
+        </section>
+      </main>
+
       <WalletUnlockModal
         open={unlockOpen}
         onClose={() => setUnlockOpen(false)}
@@ -47,14 +59,11 @@ export default function App() {
         onUseForSigning={setUseServer}
         onDestroy={() => setServerWallet(null)}
       />
+
       <footer className="footer">
         <div className="footer__inner">
-          <span>© GCC 2025 — Making Volatility Great Again</span>
-          <span>
-            <a href="https://twitter.com">Twitter</a>
-            <a href="https://discord.gg">Discord</a>
-            <a href="#">Docs</a>
-          </span>
+          <span>© 2025 — Making Volatility Great Again</span>
+          <span><a href="#">Twitter</a><a href="#">Discord</a></span>
         </div>
       </footer>
     </>
