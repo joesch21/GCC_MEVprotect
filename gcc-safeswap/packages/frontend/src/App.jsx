@@ -4,6 +4,7 @@ import SafeSwap from './components/SafeSwap.jsx';
 import WalletUnlockModal from './components/WalletUnlockModal.jsx';
 import useShieldStatus from './hooks/useShieldStatus.js';
 import { ServerSigner } from './lib/serverSigner.js';
+import { getBrowserProvider } from './lib/ethers.js';
 
 export default function App() {
   const [account, setAccount] = useState(null);
@@ -13,6 +14,14 @@ export default function App() {
   const [useServer, setUseServer] = useState(false);
 
   useEffect(() => {
+    (async () => {
+      try {
+        const prov = getBrowserProvider();
+        const acc = await prov.send('eth_accounts', []);
+        if (acc?.[0]) setAccount(acc[0]);
+        prov.on('accountsChanged', a => setAccount(a?.[0] || ''));
+      } catch {}
+    })();
     if (!window.ethereum) return;
     window.ethereum.on('chainChanged', refreshShield);
     return () => { window.ethereum && window.ethereum.removeListener('chainChanged', refreshShield); };
@@ -36,7 +45,7 @@ export default function App() {
           <li><a href="#">NFT Vault</a></li>
         </ul>
         <div className="nav__right">
-          <Connect account={account} setAccount={setAccount} />
+          <Connect unlockedAddr={useServer && serverWallet ? serverWallet.address : ''} />
           <button className="primary" onClick={() => setUnlockOpen(true)}>Unlock Wallet</button>
           <span className={`pill ${shieldOn ? 'pill--success' : 'pill--warning'}`}>
             {shieldOn ? 'MEV-Shield ON' : 'MEV-Shield OFF'}

@@ -16,7 +16,11 @@ body{
   background: var(--bg);
   color: var(--ink);
   font-family: system-ui, -apple-system, Segoe UI, Inter, Roboto, "Helvetica Neue", Arial, sans-serif;
+  display:flex;
+  flex-direction:column;
+  min-height:100vh;
 }
+main{ flex:1; }
 
 /* Background matrix */
 .bg-overlay{ position:fixed; inset:0; overflow:hidden; z-index:-1; }
@@ -53,17 +57,17 @@ header.nav{
 .pill--warning{ color:var(--orange); }
 .pill--accent{ color:var(--orange); }
 
-button{
+button, .btn{
   border:1px solid var(--line);
   background: rgba(0,0,0,.5);
   color:var(--cyan);
   padding:10px 14px; border-radius:10px; cursor:pointer;
 }
-button:hover{ border-color:#66ffff; }
-button.primary{
+button:hover, .btn:hover{ border-color:#66ffff; }
+button.primary, .btn--primary{
   background: var(--cyan-weak);
 }
-button.success{
+button.success, .btn--success{
   border-color: var(--orange);
   color: var(--orange);
 }
@@ -114,7 +118,7 @@ button.success{
 .dropzone{ border:1px dashed #334155; padding:1rem; text-align:center; cursor:pointer; margin-top:.5rem; border-radius:10px; }
 
 /* Footer */
-footer{ margin-top:40px; }
+footer{ margin-top:auto; }
 .footer{ padding:14px 0; border-top:1px solid var(--line); }
 .footer__inner{ display:flex; align-items:center; justify-content:space-between; font-size:.9rem; }
 .footer__inner a{ color:var(--cyan); text-decoration:none; margin-left:14px; }
@@ -124,3 +128,17 @@ footer{ margin-top:40px; }
 .guard{ display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; }
 .actions{ display:flex; gap:10px; margin-top:12px; }
 .status{ color:#a7f3d0; }
+
+@media (max-width:600px){
+  header.nav{ flex-direction:column; align-items:flex-start; gap:12px; }
+  .nav__right{ flex-wrap:wrap; }
+  .row{ flex-direction:column; align-items:stretch; }
+  .row input, .row select{ width:100%; padding:14px; }
+  button, .btn{ padding:14px 16px; }
+  .footer__inner{ flex-direction:column; gap:8px; text-align:center; }
+}
+
+@media (max-width:480px){
+  .actions{ flex-direction:column; }
+  .actions button, .actions .btn{ width:100%; }
+}
