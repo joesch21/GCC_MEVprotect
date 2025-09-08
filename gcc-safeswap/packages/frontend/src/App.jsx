@@ -13,6 +13,11 @@ export default function App() {
   const [unlockOpen, setUnlockOpen] = useState(false);
   const [serverWallet, setServerWallet] = useState(null);
   const [useServer, setUseServer] = useState(false);
+  const scrollToSwap = () => {
+    document
+      .getElementById("swap")
+      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
 
   useEffect(() => {
     (async () => {
@@ -27,6 +32,13 @@ export default function App() {
     window.ethereum.on('chainChanged', refreshShield);
     return () => { window.ethereum && window.ethereum.removeListener('chainChanged', refreshShield); };
   }, [refreshShield]);
+
+  useEffect(() => {
+    if (window.location.pathname === "/swap") {
+      const el = document.getElementById("swap");
+      el?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, []);
 
   const activeAccount = useServer && serverWallet ? serverWallet.address : account;
   const signer = useServer && serverWallet ? new ServerSigner(serverWallet.sessionId, serverWallet.address) : null;
@@ -55,7 +67,7 @@ export default function App() {
           <h1><span className="glow">SafeSwap</span> for Condorians</h1>
           <p className="lead">Private, MEV-protected swaps with Apple-style simplicity.</p>
           <div className="cta">
-            <button className="btn btn--primary">Start Swapping</button>
+            <button className="btn btn--primary" onClick={scrollToSwap}>Start Swapping</button>
           </div>
         </div>
         <div className="hero__visual">
@@ -66,7 +78,7 @@ export default function App() {
       </section>
 
       <main>
-        <section className="holo">
+        <section id="swap" className="holo">
           <div className="card">
             <SafeSwap account={activeAccount} serverSigner={signer} />
           </div>
