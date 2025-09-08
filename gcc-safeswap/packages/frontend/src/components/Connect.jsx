@@ -2,7 +2,7 @@ import React from 'react';
 import { getProvider } from '../lib/ethers';
 import { shorten } from '../lib/format';
 
-export default function Connect({ account, setAccount }) {
+export default function Connect({ account, setAccount, className = '' }) {
   const connect = async () => {
     try {
       const provider = getProvider();
@@ -14,7 +14,7 @@ export default function Connect({ account, setAccount }) {
   };
 
   return (
-    <button onClick={connect}>
+    <button className={`btn ${className}`} onClick={connect}>
       {account ? shorten(account) : 'Connect MetaMask'}
     </button>
   );

@@ -7,7 +7,7 @@ import { ServerSigner } from './lib/serverSigner.js';
 
 export default function App() {
   const [account, setAccount] = useState(null);
-  const { shieldOn, markPrivateUsed, refreshShield } = useShieldStatus();
+  const { shieldOn, refreshShield } = useShieldStatus();
   const [unlockOpen, setUnlockOpen] = useState(false);
   const [serverWallet, setServerWallet] = useState(null);
   const [useServer, setUseServer] = useState(false);
@@ -18,51 +18,27 @@ export default function App() {
     return () => { window.ethereum && window.ethereum.removeListener('chainChanged', refreshShield); };
   }, [refreshShield]);
 
-  const switchRpc = async () => {
-    if (!window.ethereum) return;
-    try {
-      await window.ethereum.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: '0x38' }] });
-      markPrivateUsed();
-      await refreshShield();
-    } catch (err) {
-      if (err.code === 4902) {
-        await window.ethereum.request({
-          method: 'wallet_addEthereumChain',
-          params: [{
-            chainId: '0x38',
-            chainName: 'BNB Chain',
-            nativeCurrency: { name: 'BNB', symbol: 'BNB', decimals: 18 },
-            rpcUrls: ['https://bscrpc.pancakeswap.finance'],
-            blockExplorerUrls: ['https://bscscan.com']
-          }]
-        });
-        markPrivateUsed();
-        await refreshShield();
-      } else {
-        console.error(err);
-      }
-    }
-  };
-
   const activeAccount = useServer && serverWallet ? serverWallet.address : account;
   const signer = useServer && serverWallet ? new ServerSigner(serverWallet.sessionId, serverWallet.address) : null;
 
   return (
     <>
-      <header>
-        <div>
-          <h1>🜲 GCC SafeSwap</h1>
-          <p>Private, MEV-protected swaps for Condorians</p>
-        </div>
-        <div>
-          <button onClick={switchRpc}>Use Private RPC</button>
-          <Connect account={account} setAccount={setAccount} />
-          <button onClick={() => setUnlockOpen(true)}>Unlock Condor Wallet</button>
-          <span className={`pill ${shieldOn ? 'shield-on' : 'shield-off'}`}>
+      <div className="bg-overlay"><div className="bg-matrix"></div></div>
+      <nav className="nav">
+        <div className="brand"><span className="logo">🜲</span><span>GCC SafeSwap</span></div>
+        <ul className="nav__links">
+          <li><a href="#">Docs</a></li>
+          <li><a href="#">Staking</a></li>
+          <li><a href="#">NFT Vault</a></li>
+        </ul>
+        <div className="nav__links">
+          <Connect account={account} setAccount={setAccount} className="btn" />
+          <button className="btn btn--primary" onClick={() => setUnlockOpen(true)}>Unlock Wallet</button>
+          <span className={`pill ${shieldOn ? 'pill--success' : 'pill--warning'}`}>
             {shieldOn ? 'MEV-Shield ON' : 'MEV-Shield OFF'}
           </span>
         </div>
-      </header>
+      </nav>
       <SafeSwap account={activeAccount} serverSigner={signer} />
       <WalletUnlockModal
         open={unlockOpen}
@@ -71,6 +47,16 @@ export default function App() {
         onUseForSigning={setUseServer}
         onDestroy={() => setServerWallet(null)}
       />
+      <footer className="footer">
+        <div className="footer__inner">
+          <span>© GCC 2025 — Making Volatility Great Again</span>
+          <span>
+            <a href="https://twitter.com">Twitter</a>
+            <a href="https://discord.gg">Discord</a>
+            <a href="#">Docs</a>
+          </span>
+        </div>
+      </footer>
     </>
   );
 }
