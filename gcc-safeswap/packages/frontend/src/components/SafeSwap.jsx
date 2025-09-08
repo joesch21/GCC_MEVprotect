@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import TOKENS from '../lib/tokens-bsc';
+import { BrowserProvider, Contract, formatUnits } from 'ethers';
+import TOKENS from '../lib/tokens-bsc.js';
 import { formatAmount, toBase } from '../lib/format';
 import { getSigner, getBurner } from '../lib/ethers';
 import useQuote from '../hooks/useQuote.js';
@@ -26,6 +27,8 @@ export default function SafeSwap({ account, serverSigner }) {
 
   const { fetch0x, fetchApe } = useQuote({ chainId:56 });
   const { ensure } = useAllowance();
+
+  const GAS_BUFFER_BNB = 0.002; // ~2e-3 BNB ~ ~$1-ish depending on price
 
   const addToast = (msg, type='') => setToasts(t => [...t, { msg, type }]);
 
@@ -116,6 +119,32 @@ export default function SafeSwap({ account, serverSigner }) {
     }
   }
 
+  async function onMax() {
+    try {
+      const prov = new BrowserProvider(window.ethereum, 'any');
+      const signerAddr = (await prov.send('eth_requestAccounts', []))[0];
+      if (!signerAddr) return;
+
+      if (from.isNative) {
+        const bnbWei = await prov.getBalance(signerAddr);
+        const bnb = Number(formatUnits(bnbWei, 18));
+        const max = Math.max(0, bnb - GAS_BUFFER_BNB);
+        setAmount(max.toFixed(6));
+      } else {
+        const erc20 = new Contract(from.address, [
+          'function balanceOf(address) view returns (uint256)',
+          'function decimals() view returns (uint8)'
+        ], prov);
+        const [bal, dec] = await Promise.all([
+          erc20.balanceOf(signerAddr),
+          erc20.decimals().catch(()=>from.decimals||18)
+        ]);
+        const max = Number(formatUnits(bal, dec));
+        setAmount(max.toFixed(dec > 6 ? 6 : dec));
+      }
+    } catch {}
+  }
+
   return (
     <>
       <div>
@@ -139,9 +168,10 @@ export default function SafeSwap({ account, serverSigner }) {
           {tokenList.map(t => <option key={t.address} value={t.address}>{t.symbol}</option>)}
         </select>
       </div>
-      <div>
-        Amount:
-        <input value={amount} onChange={e => setAmount(e.target.value)} />
+      <div className="row">
+        <label>Amount:</label>
+        <input value={amount} onChange={e=>setAmount(e.target.value)} inputMode="decimal" />
+        <button className="btn btn--primary" type="button" onClick={onMax}>Max</button>
       </div>
       <button className="primary" onClick={getQuote}>Get Quote</button>
       {quote && (
