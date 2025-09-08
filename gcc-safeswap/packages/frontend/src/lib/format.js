@@ -16,6 +16,14 @@ export const formatAmount = (value, decimals) => {
   }
 };
 
+export const fromBase = (value, decimals) => {
+  try {
+    return formatUnits(value, decimals);
+  } catch {
+    return '0';
+  }
+};
+
 export const shorten = (addr) => addr ? addr.slice(0,6) + '...' + addr.slice(-4) : '';
 
 export const toBase = (value, decimals) => {

@@ -71,6 +71,18 @@ button.success, .btn--success{
   border-color: var(--orange);
   color: var(--orange);
 }
+button:disabled, .btn:disabled{ cursor:not-allowed; opacity:.5; }
+button[aria-busy="true"]::after{
+  content:"";
+  display:inline-block;
+  width:12px; height:12px;
+  margin-left:6px;
+  border:2px solid currentColor;
+  border-top-color:transparent;
+  border-radius:50%;
+  animation:spin 1s linear infinite;
+}
+@keyframes spin{ to{ transform:rotate(360deg); } }
 
 /* Holo card (swap panel) */
 .holo{
@@ -104,6 +116,16 @@ button.success, .btn--success{
 
 /* Hints / Errors */
 .quote{ padding:10px; border:1px dashed #334155; border-radius:10px; color:#d1d5db; }
+.badge{
+  display:inline-block;
+  padding:2px 6px;
+  border-radius:6px;
+  background:#334155;
+  color:#e5e7eb;
+  font-size:.75rem;
+  margin-bottom:4px;
+}
+.muted{ color:#9ca3af; font-size:.85rem; }
 .error{ color:#ff6666; padding:8px; border:1px solid #7f1d1d; border-radius:8px; background:#450a0a; }
 .hint{ color:#93c5fd; }
 

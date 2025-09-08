@@ -48,14 +48,23 @@ router.get("/quote", async (req, res) => {
     const sellToken = req.query.sellToken;
     const buyToken = req.query.buyToken;
     const sellAmount = toBN(req.query.sellAmount || "0");
-    if (!sellToken || !buyToken || !sellAmount) return res.status(400).json({ error:"sellToken,buyToken,sellAmount required" });
+    if (!sellToken || !buyToken || !sellAmount) {
+      console.error("DEXQUOTE missing param", { sellToken, buyToken, sellAmount: String(sellAmount) });
+      return res.status(400).json({ error: "sellToken,buyToken,sellAmount required" });
+    }
 
     const provider = new ethers.JsonRpcProvider(PRC, chainId);
     const path = makePath(sellToken, buyToken);
-    if (!path) return res.status(400).json({ error:"invalid path" });
+    if (!path) {
+      console.error("DEXQUOTE invalid path", { sellToken, buyToken });
+      return res.status(400).json({ error: "invalid path" });
+    }
 
     const best = await bestRouterQuote(provider, sellAmount, path, [APE, PCS]);
-    if (!best) return res.status(404).json({ error:"no router could quote" });
+    if (!best) {
+      console.error("DEXQUOTE no router could quote", { sellToken, buyToken, amount: String(sellAmount) });
+      return res.status(404).json({ error: "no router could quote" });
+    }
 
     res.json({
       chainId,
@@ -71,12 +80,18 @@ router.get("/quote", async (req, res) => {
 router.post("/buildTx", async (req, res) => {
   try{
     const { from, sellToken, buyToken, amountIn, quoteBuy, routerAddr, slippageBps = 50 } = req.body || {};
-    if (!from || !sellToken || !buyToken || !amountIn) return res.status(400).json({ error:"from,sellToken,buyToken,amountIn required" });
+    if (!from || !sellToken || !buyToken || !amountIn) {
+      console.error("DEXBUILD missing param", { from, sellToken, buyToken, amountIn });
+      return res.status(400).json({ error: "from,sellToken,buyToken,amountIn required" });
+    }
 
     const provider = new ethers.JsonRpcProvider(PRC, 56);
     const router = new ethers.Contract(routerAddr || APE, SWAP_ABI, provider);
     const path = makePath(sellToken, buyToken);
-    if (!path) return res.status(400).json({ error:"invalid path" });
+    if (!path) {
+      console.error("DEXBUILD invalid path", { sellToken, buyToken });
+      return res.status(400).json({ error: "invalid path" });
+    }
 
     const deadline = Math.floor(Date.now()/1000) + 600;
     const minOut = quoteBuy
