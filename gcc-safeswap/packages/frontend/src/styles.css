@@ -56,6 +56,10 @@ header.nav{
 .pill--success{ color:var(--mint); }
 .pill--warning{ color:var(--orange); }
 .pill--accent{ color:var(--orange); }
+.pill.active{
+  background: var(--cyan-weak);
+  border-color: var(--cyan);
+}
 
 button, .btn{
   border:1px solid var(--line);
@@ -134,6 +138,7 @@ button[aria-busy="true"]::after{
 .toast{ background:#111827; color:#e5e7eb; border:1px solid #374151; border-radius:8px; padding:10px 12px; }
 .toast.success{ border-color:#10b981; }
 .toast.error{ border-color:#ef4444; }
+.toast.warn{ border-color:#f59e0b; }
 
 /* Upload helpers */
 .fingerprint{ display:inline-block; background:#333; padding:2px 6px; margin-left:6px; font-size:.80rem; border-radius:6px; }

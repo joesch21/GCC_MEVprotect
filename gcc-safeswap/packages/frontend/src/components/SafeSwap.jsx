@@ -4,7 +4,6 @@ import TOKENS from '../lib/tokens-bsc.js';
 import { fromBase, toBase } from '../lib/format';
 import { getBrowserProvider } from '../lib/ethers';
 import { log, clearLogs } from '../lib/logger.js';
-import SettingsModal from './SettingsModal.jsx';
 import Toasts from './Toasts.jsx';
 
 export default function SafeSwap({ account }) {
@@ -14,8 +13,8 @@ export default function SafeSwap({ account }) {
   const [amount, setAmount] = useState('');
   const [quote, setQuote] = useState(null);
   const [status, setStatus] = useState('');
-  const [settings, setSettings] = useState({ slippageBps:50, deadlineMins:15, approveMax:true });
-  const [showSettings, setShowSettings] = useState(false);
+  // slippage in basis points (default 2%)
+  const [slippageBps, setSlip] = useState(200);
   const [toasts, setToasts] = useState([]);
   const [swapping, setSwapping] = useState(false);
   const [gas, setGas] = useState(null);
@@ -24,6 +23,7 @@ export default function SafeSwap({ account }) {
   const addToast = (msg, type='') => setToasts(t => [...t, { msg, type }]);
   const CHAIN_ID = 56;
   const to0xParam = t => t.isNative ? 'BNB' : t.address;
+  const REFLECTION_SET = new Set(['0x092ac429b9c3450c9909433eb0662c3b7c13cf9a']);
 
   useEffect(() => {
     async function check(){
@@ -53,7 +53,7 @@ export default function SafeSwap({ account }) {
         sellToken: to0xParam(from),
         buyToken:  to0xParam(to),
         sellAmount,
-        slippageBps: String(settings.slippageBps)
+        slippageBps: String(slippageBps)
       });
       if (taker) q0.set('taker', taker);
 
@@ -131,7 +131,7 @@ export default function SafeSwap({ account }) {
             amountIn:  toBase(amount || '0', from.decimals),
             quoteBuy:  quote.buyAmount,
             routerAddr: quote.router,
-            slippageBps: settings.slippageBps
+            slippageBps
           })
         }).then(r => r.json());
 
@@ -160,7 +160,12 @@ export default function SafeSwap({ account }) {
       log('RECEIPT', rec);
     }catch(e){
       console.error(e);
-      setStatus(`Swap failed: ${e.message || String(e)}`);
+      const msg = e?.shortMessage || e?.reason || e?.message || String(e);
+      let hint = "";
+      if (/INSUFFICIENT_OUTPUT_AMOUNT/i.test(msg)) {
+        hint = " Try increasing slippage to 2–5% or reduce trade size.";
+      }
+      setStatus(`Swap failed: ${msg}.${hint}`);
       log('SWAP ERROR', e);
     }finally{
       setSwapping(false);
@@ -184,16 +189,16 @@ export default function SafeSwap({ account }) {
           erc20.balanceOf(signerAddr),
           erc20.decimals().catch(()=>from.decimals||18)
         ]);
-        setAmount(fromBase(bal, dec));
+      setAmount(fromBase(bal, dec));
       }
     }catch{}
   }
 
+  const involvesReflection = (!from.isNative && REFLECTION_SET.has(from.address.toLowerCase())) ||
+                             (!to.isNative && REFLECTION_SET.has(to.address.toLowerCase()));
+
   return (
     <>
-      <div style={{textAlign:'right'}}>
-        <button className="primary" onClick={()=>setShowSettings(true)}>⚙️</button>
-      </div>
       <div>
         From:
         <select value={from.address} onChange={e => setFrom(tokenList.find(t => t.address === e.target.value))}>
@@ -211,8 +216,22 @@ export default function SafeSwap({ account }) {
         <input value={amount} onChange={e=>setAmount(e.target.value)} inputMode="decimal" />
         <button className="btn btn--primary" type="button" onClick={onMax}>Max</button>
       </div>
+      <div className="row">
+        <label>Slippage</label>
+        <input type="number" min="1" max="1000" value={slippageBps} onChange={e=>setSlip(Number(e.target.value))}/> bps
+        <div style={{display:'flex', gap:6}}>
+          {[200,300,500].map(bps => (
+            <button key={bps} type="button" className={slippageBps===bps ? 'pill active' : 'pill'} onClick={()=>setSlip(bps)}>{(bps/100).toFixed(2)}%</button>
+          ))}
+        </div>
+      </div>
       <button className="primary" onClick={getQuote}>Get Quote</button>
       {status && <p className="status">{status}</p>}
+      {involvesReflection && (
+        <div className="toast warn">
+          GCC is a reflection (fee-on-transfer) token. Higher slippage (2–5%) may be required.
+        </div>
+      )}
       {quote && (
         <div className="quote">
           {quote.source === 'DEX' ? (
@@ -228,7 +247,7 @@ export default function SafeSwap({ account }) {
             </>
           )}
           <div className="muted">
-            Min received (~{(Number(fromBase(quote.buyAmount, to.decimals)) * (1 - settings.slippageBps/10000)).toFixed(8)} {to.symbol}) at {settings.slippageBps/100}% slippage
+            Min received (~{(Number(fromBase(quote.buyAmount, to.decimals)) * (1 - slippageBps/10000)).toFixed(8)} {to.symbol}) at {(slippageBps/100).toFixed(2)}% slippage
           </div>
           {gas && <div className="muted">Estimated gas: {Number(gas)/1e5}</div>}
         </div>
@@ -241,7 +260,6 @@ export default function SafeSwap({ account }) {
         onClick={swapMetaMaskPrivate}>
         {swapping ? 'Swapping…' : 'Swap (MetaMask • Private RPC)'}
       </button>
-      <SettingsModal open={showSettings} onClose={()=>setShowSettings(false)} settings={settings} setSettings={setSettings} />
       <Toasts items={toasts} />
     </>
   );

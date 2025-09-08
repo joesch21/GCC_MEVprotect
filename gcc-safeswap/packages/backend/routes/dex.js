@@ -7,11 +7,18 @@ const APE = process.env.APE_ROUTER || "0xC0788A3aD43d79aa53B09c2EaCc313A787d1d60
 const PCS = process.env.PCS_ROUTER || "0x10ED43C718714eb63d5aA57B78B54704E256024E";
 const PRC = process.env.PRIVATE_RPC_URL || "https://bscrpc.pancakeswap.finance";
 
+// Tokens with transfer fees (reflection tokens)
+const REFLECTION_TOKENS = new Set([
+  // GCC (BSC)
+  "0x092ac429b9c3450c9909433eb0662c3b7c13cf9a"
+]);
+
 const ROUTER_ABI = [
   "function getAmountsOut(uint amountIn, address[] calldata path) external view returns (uint[] memory amounts)"
 ];
 const SWAP_ABI = [
   "function swapExactETHForTokens(uint amountOutMin, address[] path, address to, uint deadline) payable",
+  "function swapExactETHForTokensSupportingFeeOnTransferTokens(uint amountOutMin, address[] path, address to, uint deadline) payable",
   "function swapExactTokensForETHSupportingFeeOnTransferTokens(uint amountIn, uint amountOutMin, address[] path, address to, uint deadline)",
   "function swapExactTokensForTokensSupportingFeeOnTransferTokens(uint amountIn, uint amountOutMin, address[] path, address to, uint deadline)"
 ];
@@ -37,7 +44,7 @@ async function bestRouterQuote(provider, amountIn, path, routers){
       const amounts = await r.getAmountsOut(amountIn, path);
       const out = amounts[amounts.length-1];
       if (!best || out > best.buy) best = { router: raddr, amounts, buy: out };
-    }catch(_){}
+    }catch(_){ }
   }
   return best;
 }
@@ -79,7 +86,7 @@ router.get("/quote", async (req, res) => {
 
 router.post("/buildTx", async (req, res) => {
   try{
-    const { from, sellToken, buyToken, amountIn, quoteBuy, routerAddr, slippageBps = 50 } = req.body || {};
+    const { from, sellToken, buyToken, amountIn, quoteBuy, routerAddr, slippageBps = 200 } = req.body || {};
     if (!from || !sellToken || !buyToken || !amountIn) {
       console.error("DEXBUILD missing param", { from, sellToken, buyToken, amountIn });
       return res.status(400).json({ error: "from,sellToken,buyToken,amountIn required" });
@@ -94,19 +101,30 @@ router.post("/buildTx", async (req, res) => {
     }
 
     const deadline = Math.floor(Date.now()/1000) + 600;
+
+    // minOut derived from quote * (1 - slippage)
     const minOut = quoteBuy
       ? (toBN(quoteBuy) * toBN(10000 - Number(slippageBps))) / toBN(10000)
       : toBN(0);
 
     const iface = router.interface;
+    const inIsBNB  = isBNB(sellToken);
+    const outIsBNB = isBNB(buyToken);
+
+    const inIsReflection  = !inIsBNB  && REFLECTION_TOKENS.has(addr(sellToken));
+    const outIsReflection = !outIsBNB && REFLECTION_TOKENS.has(addr(buyToken));
+
     let tx;
-    if (isBNB(sellToken)){
+    if (inIsBNB){
+      const fn = outIsReflection
+        ? "swapExactETHForTokensSupportingFeeOnTransferTokens"
+        : "swapExactETHForTokens";
       tx = {
         to: router.target,
         value: ethers.toBeHex(amountIn),
-        data: iface.encodeFunctionData("swapExactETHForTokens", [minOut, path, from, deadline])
+        data: iface.encodeFunctionData(fn, [minOut, path, from, deadline])
       };
-    } else if (isBNB(buyToken)){
+    } else if (outIsBNB){
       tx = {
         to: router.target,
         data: iface.encodeFunctionData("swapExactTokensForETHSupportingFeeOnTransferTokens", [amountIn, minOut, path, from, deadline])
