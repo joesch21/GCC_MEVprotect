@@ -1,6 +1,6 @@
 /* =========================================================
    Condor SafeSwap — Unified Styles (Apple-style, mobile-first)
-   Background uses /assets/matrix.png + dark overlay
+   Background uses /assets/no_mask.* + dark overlay
    ========================================================= */
 
 /* ---------- Tokens ---------- */
@@ -48,7 +48,11 @@ input, select, button { font-size:16px; -webkit-tap-highlight-color: transparent
   width:100%; height:100%;
   background:
     linear-gradient(rgba(0,0,0,.55), rgba(0,0,0,.85)),
-    url('/assets/matrix.png') center/cover no-repeat,
+    image-set(
+      url('/assets/no_mask.avif') type('image/avif'),
+      url('/assets/no_mask.webp') type('image/webp'),
+      url('/assets/no_mask.png') type('image/png')
+    ) center/cover no-repeat,
     radial-gradient(circle at 50% 30%, rgba(0,255,255,.10), transparent 60%),
     #000;
   opacity:.42;
@@ -59,16 +63,9 @@ input, select, button { font-size:16px; -webkit-tap-highlight-color: transparent
   .bg-matrix{ animation-duration:45s; } /* calmer motion on phones */
 }
 
-/* Mobile GPU savings: avoid blur on small screens (still looks great) */
+/* Always disable blur on small screens */
 @media (max-width:600px){
-  .holo .card{
-    backdrop-filter:none;
-    background:rgba(5,7,10,.92);
-  }
-}
-
-/* Slightly reduce BG intensity on mobile for readability */
-@media (max-width:600px){
+  .holo .card{ backdrop-filter:none; background:rgba(5,7,10,.92); }
   .bg-matrix{ opacity:.36; }
 }
 

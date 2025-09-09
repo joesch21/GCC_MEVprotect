@@ -95,7 +95,7 @@ export default function App() {
         </div>
         {/* <div className="hero__visual">
           <div className="holo">
-            <img src="/assets/matrix.png" alt="Condor" className="condor-visual" />
+            <img src="/assets/no_mask.png" alt="Condor" className="condor-visual" />
           </div>
         </div> */}
       </section>
