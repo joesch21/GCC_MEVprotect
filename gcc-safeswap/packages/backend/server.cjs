@@ -30,6 +30,7 @@ app.use('/api/relay', require('./routes/relay'));
 app.use('/api/apeswap', require('./routes/apeswap'));
 app.use('/api/wallet', require('./routes/wallet'));
 app.use('/api/dex', require('./routes/dex'));
+app.use('/api/plugins', require('./routes/plugins'));
 
 app.listen(PORT, () => {
   console.log(`Server running on ${PORT}`);
