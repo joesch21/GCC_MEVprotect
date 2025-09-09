@@ -1,5 +1,5 @@
 const express = require('express');
-const fetch = require('node-fetch');
+const fetch = globalThis.fetch;
 const { ethers } = require('ethers');
 const { PANCAKE, APESWAP } = require('../lib/routers.cjs');
 

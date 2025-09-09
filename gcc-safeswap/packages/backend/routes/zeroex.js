@@ -1,7 +1,6 @@
 const express = require("express");
-const fetch = require("node-fetch");
-
 const router = express.Router();
+const fetch = globalThis.fetch;
 
 const BASE = "https://bsc.api.0x.org/swap/v1";
 
@@ -31,6 +30,9 @@ router.get("/price", async (req, res) => {
 });
 
 router.get("/quote", async (req, res) => {
+  if (!process.env.ZEROEX_API_KEY) {
+    return res.status(204).end();
+  }
   try {
     const url = `${BASE}/quote?${new URLSearchParams(req.query)}`;
     const r = await fetch(url, { headers: auth() });
