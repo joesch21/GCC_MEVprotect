@@ -1,41 +1,62 @@
-import React, { useEffect, useState } from "react";
-import { getLogs, clearLogs } from "../lib/logger.js";
+import React, { useEffect, useState, useRef } from 'react';
 
-export default function LogTail(){
-  const [lines, setLines] = useState(getLogs());
-  const [show, setShow] = useState(false);
-  const [mobile, setMobile] = useState(typeof window !== 'undefined' && window.innerWidth <= 480);
+export default function LogTail() {
+  const [open, setOpen] = useState(true);
+  const [lines, setLines] = useState([]);
+  const boxRef = useRef(null);
+
   useEffect(() => {
-    const id = setInterval(() => setLines(getLogs()), 800);
-    return () => clearInterval(id);
+    const onLog = (e) => {
+      const msg = typeof e.detail === 'string' ? e.detail : JSON.stringify(e.detail);
+      setLines((prev) => {
+        const next = [...prev, msg];
+        return next.length > 500 ? next.slice(-500) : next;
+      });
+    };
+    window.addEventListener('safeswap-log', onLog);
+    return () => window.removeEventListener('safeswap-log', onLog);
   }, []);
+
   useEffect(() => {
-    const onResize = () => setMobile(window.innerWidth <= 480);
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
-  }, []);
+    if (boxRef.current) {
+      boxRef.current.scrollTop = boxRef.current.scrollHeight;
+    }
+  }, [lines]);
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(lines.join('\n'));
+    } catch (_) {}
+  };
+
+  const clear = () => setLines([]);
+
   return (
-    <>
-      {mobile && <button className="debug-toggle" onClick={()=>setShow(s=>!s)}>Logs</button>}
-      <div className="debug-log toasts" style={{right:12, bottom:12, maxWidth:520, display: mobile && !show ? 'none' : undefined}}>
-        <div className="toast">
-          <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", gap:8}}>
-            <strong>Debug Log</strong>
-            <div>
-            <button onClick={()=>{
-              const text = lines.map(l=>new Date(l.ts).toISOString()+" "+l.text).join("\n");
-              navigator.clipboard?.writeText(text);
-            }}>Copy</button>
-            <button onClick={()=>{ clearLogs(); setLines([]); }}>Clear</button>
+    <div className="logtail-wrap">
+      <button
+        type="button"
+        className="debug-toggle"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+      >
+        {open ? 'Hide Logs' : 'Show Logs'}
+      </button>
+
+      {open && (
+        <div className="debug-log card">
+          <div className="debug-log__header">
+            <span>Debug Log</span>
+            <div className="actions">
+              <button type="button" className="btn" onClick={copy}>Copy</button>
+              <button type="button" className="btn" onClick={clear}>Clear</button>
+            </div>
           </div>
+          <pre ref={boxRef} className="debug-log__body">
+            {lines.join('\n')}
+          </pre>
         </div>
-        <div style={{maxHeight:180, overflow:"auto", fontFamily:"ui-monospace, SFMono-Regular, Menlo, Consolas, monospace", fontSize:12, marginTop:8}}>
-          {lines.length === 0 ? <div style={{opacity:.7}}>No logs yet</div> :
-            lines.slice(-40).map((l,i)=> <div key={i}><span style={{opacity:.6}}>{new Date(l.ts).toLocaleTimeString()} </span>{l.text}</div>)
-          }
-        </div>
-      </div>
-    </>
+      )}
+    </div>
   );
 }
 
