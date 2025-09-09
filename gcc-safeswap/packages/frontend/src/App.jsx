@@ -28,12 +28,19 @@ export default function App() {
         const prov = getBrowserProvider();
         const acc = await prov.send('eth_accounts', []);
         if (acc?.[0]) setAccount(acc[0]);
-        prov.on('accountsChanged', a => setAccount(a?.[0] || ''));
       } catch {}
     })();
-    if (!window.ethereum) return;
-    window.ethereum.on('chainChanged', refreshShield);
-    return () => { window.ethereum && window.ethereum.removeListener('chainChanged', refreshShield); };
+    const onAccountsChanged = a => setAccount(a?.[0] || '');
+    if (window.ethereum?.on) {
+      window.ethereum.on('accountsChanged', onAccountsChanged);
+      window.ethereum.on('chainChanged', refreshShield);
+    }
+    return () => {
+      if (window.ethereum?.removeListener) {
+        window.ethereum.removeListener('accountsChanged', onAccountsChanged);
+        window.ethereum.removeListener('chainChanged', refreshShield);
+      }
+    };
   }, [refreshShield]);
 
   // Respect OS "Reduce Motion" on first visit
