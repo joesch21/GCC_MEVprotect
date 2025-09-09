@@ -1,13 +1,44 @@
-import React from 'react';
-import Uploader from './Uploader.jsx';
+import React, { useState } from 'react';
 
-export default function CondorWalletPlugin({ onClose, onServerSigner, onUseServer }) {
+export default function CondorWalletPane() {
+  const [file, setFile] = useState(null);
+  const [msg, setMsg] = useState('');
+
+  async function onUpload() {
+    if (!file) return;
+    const fd = new FormData();
+    fd.append('image', file);
+    setMsg('Uploading…');
+    try {
+      const r = await fetch('/api/plugins/condor-wallet/upload', {
+        method: 'POST',
+        body: fd,
+      });
+      const j = await r.json();
+      if (!r.ok) setMsg(`Error: ${j.error || r.statusText}`);
+      else setMsg('Session ready (stub).');
+    } catch (err) {
+      setMsg(`Error: ${err.message}`);
+    }
+  }
+
   return (
-    <div className="card stack" style={{gap:8}}>
-      <h3>Condor Wallet <span className="badge" style={{background:'red'}}>Experimental</span></h3>
-      <p className="muted">No keys leave your device except encrypted payloads.</p>
-      <Uploader onServerSigner={onServerSigner} onUseServer={onUseServer} />
-      <button onClick={onClose}>Close</button>
+    <div>
+      <p className="muted">Experimental. Do not upload secrets. Stub returns 501.</p>
+      <input
+        type="file"
+        accept="image/*"
+        onChange={(e) => setFile(e.target.files?.[0] || null)}
+      />
+      <button className="btn" disabled={!file} onClick={onUpload}>
+        Upload
+      </button>
+      {msg && (
+        <div className="stat" style={{ marginTop: 8 }}>
+          {msg}
+        </div>
+      )}
     </div>
   );
 }
+

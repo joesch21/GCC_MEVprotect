@@ -30,7 +30,9 @@ app.use('/api/relay', require('./routes/relay'));
 app.use('/api/apeswap', require('./routes/apeswap'));
 app.use('/api/wallet', require('./routes/wallet'));
 app.use('/api/dex', require('./routes/dex'));
-app.use('/api/plugins', require('./routes/plugins'));
+const pluginsRouter = require('./routes/plugins');
+// Plugin routes are mounted under /api/plugins
+app.use('/api/plugins', pluginsRouter);
 
 app.listen(PORT, () => {
   console.log(`Server running on ${PORT}`);
