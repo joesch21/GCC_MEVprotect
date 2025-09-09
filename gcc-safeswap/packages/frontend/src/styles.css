@@ -323,3 +323,22 @@ footer{ margin-top:auto; }
 @media (max-width: 480px) {
   .debug-log { width: 92vw; right: 4vw; left: 4vw; }
 }
+
+/* Portfolio chip group */
+.portfolio{ display:flex; gap:8px; align-items:center; }
+.pill{ display:inline-flex; align-items:center; gap:8px; }
+.pill--address{ color:var(--cyan); border-color:var(--cyan); }
+.pill--metric{ color:var(--ink); border-color:var(--line); }
+.pill--metric strong{ font-variant-numeric: tabular-nums; }
+.pill--usd{ color: var(--orange); border-color: var(--orange); }
+
+.portfolio__spinner{
+  width:12px; height:12px; border-radius:50%;
+  border:2px solid currentColor; border-top-color: transparent;
+  display:inline-block; animation:spin 1s linear infinite;
+}
+
+@media (max-width:600px){
+  .portfolio{ flex-wrap:wrap; }
+  .pill{ padding:6px 10px; font-size:.85rem; }
+}

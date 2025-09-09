@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import Connect from './components/Connect.jsx';
+import Portfolio from "./components/Portfolio.jsx";
 import SafeSwap from './components/SafeSwap.jsx';
 import WalletUnlockModal from './components/WalletUnlockModal.jsx';
 import useShieldStatus from './hooks/useShieldStatus.js';
@@ -89,10 +89,10 @@ export default function App() {
                   {perfMode ? "Performance Mode: ON" : "Performance Mode: OFF"}
                 </button>
               )}
+            <Portfolio account={activeAccount} />
             <button className="btn" aria-label="Settings" onClick={() => setSettingsOpen(true)}>
               ⚙️ Settings
             </button>
-            <Connect />
           </div>
         </div>
       </header>
