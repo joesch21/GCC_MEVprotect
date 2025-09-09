@@ -1,143 +1,64 @@
-const express = require("express");
-const { ethers } = require("ethers");
+const express = require('express');
+const { ethers } = require('ethers');
+const { PANCAKE, APESWAP, WBNB } = require('../lib/routers.cjs');
+
 const router = express.Router();
 
-const WBNB = (process.env.WBNB || "0xBB4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c").toLowerCase();
-const APE = process.env.APE_ROUTER || "0xC0788A3aD43d79aa53B09c2EaCc313A787d1d607";
-const PCS = process.env.PCS_ROUTER || "0x10ED43C718714eb63d5aA57B78B54704E256024E";
-const PRC = process.env.PRIVATE_RPC_URL || "https://bscrpc.pancakeswap.finance";
-
-// Tokens with transfer fees (reflection tokens)
-const REFLECTION_TOKENS = new Set([
-  // GCC (BSC)
-  "0x092ac429b9c3450c9909433eb0662c3b7c13cf9a"
-]);
-
-const ROUTER_ABI = [
-  "function getAmountsOut(uint amountIn, address[] calldata path) external view returns (uint[] memory amounts)"
-];
-const SWAP_ABI = [
-  "function swapExactETHForTokens(uint amountOutMin, address[] path, address to, uint deadline) payable",
-  "function swapExactETHForTokensSupportingFeeOnTransferTokens(uint amountOutMin, address[] path, address to, uint deadline) payable",
-  "function swapExactTokensForETHSupportingFeeOnTransferTokens(uint amountIn, uint amountOutMin, address[] path, address to, uint deadline)",
-  "function swapExactTokensForTokensSupportingFeeOnTransferTokens(uint amountIn, uint amountOutMin, address[] path, address to, uint deadline)"
+// very small ABI surface
+const pairAbi = ["function getReserves() view returns (uint112,uint112,uint32)"];
+const erc20Abi = ["function decimals() view returns (uint8)"];
+const routerAbi = [
+  "function getAmountsOut(uint amountIn, address[] calldata path) view returns (uint[] memory amounts)"
 ];
 
-const toBN = (x) => ethers.getBigInt(x);
-const addr = (x) => (x || "").toLowerCase();
-const isBNB = (x) => x === "BNB";
+// Helpers
+function isNative(addr){ return /^0xEeee/i.test(addr) || addr === 'BNB'; }
+function toHex(v){ return ethers.toBeHex(v); }
 
-function toRouterToken(x){ return isBNB(x) ? WBNB : addr(x); }
+router.get('/quote', async (req, res) => {
+  try {
+    const { chainId="56", sellToken, buyToken, sellAmount } = req.query;
+    if (chainId !== "56") return res.status(400).json({ error: "Only BNB Chain (56) supported" });
 
-function makePath(sell, buy){
-  const s = toRouterToken(sell);
-  const b = toRouterToken(buy);
-  if (!s || !b || s === b) return null;
-  return (s === WBNB || b === WBNB) ? [s, b] : [s, WBNB, b];
-}
+    const rpc = process.env.PRIVATE_RPC_URL;
+    const provider = new ethers.JsonRpcProvider(rpc, 56);
 
-async function bestRouterQuote(provider, amountIn, path, routers){
-  let best = null;
-  for (const raddr of routers){
-    try{
-      const r = new ethers.Contract(raddr, ROUTER_ABI, provider);
-      const amounts = await r.getAmountsOut(amountIn, path);
-      const out = amounts[amounts.length-1];
-      if (!best || out > best.buy) best = { router: raddr, amounts, buy: out };
-    }catch(_){ }
+    const sellsNative = isNative(sellToken);
+    const buysNative  = isNative(buyToken);
+    const sellAddr = sellsNative ? WBNB : sellToken;
+    const buyAddr  = buysNative ? WBNB : (buyToken === 'BNB' ? WBNB : buyToken);
+
+    // candidate paths (simple; extend as needed)
+    const candidates = [
+      { routerPath: [sellAddr, buyAddr], displayPath: [sellsNative ? '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE' : sellToken, buysNative ? '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE' : buyToken] },
+      { routerPath: [sellAddr, WBNB, buyAddr], displayPath: [sellsNative ? '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE' : sellToken, WBNB, buysNative ? '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE' : buyToken] }
+    ].filter(c => c.routerPath.every(Boolean) && new Set(c.routerPath).size === c.routerPath.length);
+
+    const routers = [
+      { name: "Pancake", addr: PANCAKE.ROUTER },
+      { name: "ApeSwap", addr: APESWAP.ROUTER }
+    ];
+
+    let best = null;
+
+    for (const r of routers) {
+      const routerC = new ethers.Contract(r.addr, routerAbi, provider);
+      for (const c of candidates) {
+        try {
+          const amounts = await routerC.getAmountsOut(sellAmount, c.routerPath);
+          const buyAmount = amounts[amounts.length - 1].toString();
+          if (!best || BigInt(buyAmount) > BigInt(best.buyAmount)) {
+            best = { chainId: 56, router: r.addr, routerName: r.name, path: c.displayPath, sellAmount, buyAmount, amounts: amounts.map(x=>x.toString()) };
+          }
+        } catch (_) { /* illiquid or no route: ignore */ }
+      }
+    }
+
+    if (!best) return res.status(404).json({ error: "No route on Pancake/ApeSwap" });
+    res.json(best);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
   }
-  return best;
-}
-
-router.get("/quote", async (req, res) => {
-  try{
-    const chainId = Number(req.query.chainId || 56);
-    const sellToken = req.query.sellToken;
-    const buyToken = req.query.buyToken;
-    const sellAmount = toBN(req.query.sellAmount || "0");
-    if (!sellToken || !buyToken || !sellAmount) {
-      console.error("DEXQUOTE missing param", { sellToken, buyToken, sellAmount: String(sellAmount) });
-      return res.status(400).json({ error: "sellToken,buyToken,sellAmount required" });
-    }
-
-    const provider = new ethers.JsonRpcProvider(PRC, chainId);
-    const path = makePath(sellToken, buyToken);
-    if (!path) {
-      console.error("DEXQUOTE invalid path", { sellToken, buyToken });
-      return res.status(400).json({ error: "invalid path" });
-    }
-
-    const best = await bestRouterQuote(provider, sellAmount, path, [APE, PCS]);
-    if (!best) {
-      console.error("DEXQUOTE no router could quote", { sellToken, buyToken, amount: String(sellAmount) });
-      return res.status(404).json({ error: "no router could quote" });
-    }
-
-    res.json({
-      chainId,
-      router: best.router,
-      path,
-      sellAmount: sellAmount.toString(),
-      buyAmount: best.buy.toString(),
-      amounts: best.amounts.map(a=>a.toString())
-    });
-  }catch(e){ res.status(500).json({ error: e.message }); }
-});
-
-router.post("/buildTx", async (req, res) => {
-  try{
-    const { from, sellToken, buyToken, amountIn, quoteBuy, routerAddr, slippageBps = 200 } = req.body || {};
-    if (!from || !sellToken || !buyToken || !amountIn) {
-      console.error("DEXBUILD missing param", { from, sellToken, buyToken, amountIn });
-      return res.status(400).json({ error: "from,sellToken,buyToken,amountIn required" });
-    }
-
-    const provider = new ethers.JsonRpcProvider(PRC, 56);
-    const router = new ethers.Contract(routerAddr || APE, SWAP_ABI, provider);
-    const path = makePath(sellToken, buyToken);
-    if (!path) {
-      console.error("DEXBUILD invalid path", { sellToken, buyToken });
-      return res.status(400).json({ error: "invalid path" });
-    }
-
-    const deadline = Math.floor(Date.now()/1000) + 600;
-
-    // minOut derived from quote * (1 - slippage)
-    const minOut = quoteBuy
-      ? (toBN(quoteBuy) * toBN(10000 - Number(slippageBps))) / toBN(10000)
-      : toBN(0);
-
-    const iface = router.interface;
-    const inIsBNB  = isBNB(sellToken);
-    const outIsBNB = isBNB(buyToken);
-
-    const inIsReflection  = !inIsBNB  && REFLECTION_TOKENS.has(addr(sellToken));
-    const outIsReflection = !outIsBNB && REFLECTION_TOKENS.has(addr(buyToken));
-
-    let tx;
-    if (inIsBNB){
-      const fn = outIsReflection
-        ? "swapExactETHForTokensSupportingFeeOnTransferTokens"
-        : "swapExactETHForTokens";
-      tx = {
-        to: router.target,
-        value: ethers.toBeHex(amountIn),
-        data: iface.encodeFunctionData(fn, [minOut, path, from, deadline])
-      };
-    } else if (outIsBNB){
-      tx = {
-        to: router.target,
-        data: iface.encodeFunctionData("swapExactTokensForETHSupportingFeeOnTransferTokens", [amountIn, minOut, path, from, deadline])
-      };
-    } else {
-      tx = {
-        to: router.target,
-        data: iface.encodeFunctionData("swapExactTokensForTokensSupportingFeeOnTransferTokens", [amountIn, minOut, path, from, deadline])
-      };
-    }
-    res.json({ ...tx, allowanceTarget: router.target });
-  }catch(e){ res.status(500).json({ error: e.message }); }
 });
 
 module.exports = router;
-
