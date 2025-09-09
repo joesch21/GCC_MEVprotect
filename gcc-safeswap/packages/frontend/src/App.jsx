@@ -6,13 +6,14 @@ import useShieldStatus from './hooks/useShieldStatus.js';
 import { ServerSigner } from './lib/serverSigner.js';
 import { getBrowserProvider } from './lib/ethers.js';
 import LogTail from "./components/LogTail.jsx";
+import SettingsDrawer from './components/SettingsDrawer.jsx';
 
 export default function App() {
   const [perfMode, setPerfMode] = useState(() => localStorage.getItem("perfMode") === "1");
   const [account, setAccount] = useState(null);
   const { shieldOn, refreshShield } = useShieldStatus();
   const [unlockOpen, setUnlockOpen] = useState(false);
-  const [serverWallet, setServerWallet] = useState(null);
+  const [serverSigner, setServerSigner] = useState(null);
   const [useServer, setUseServer] = useState(false);
   const scrollToSwap = () => {
     document
@@ -59,8 +60,8 @@ export default function App() {
     }
   }, []);
 
-  const activeAccount = useServer && serverWallet ? serverWallet.address : account;
-  const signer = useServer && serverWallet ? new ServerSigner(serverWallet.sessionId, serverWallet.address) : null;
+  const activeAccount = useServer && serverSigner ? serverSigner._address : account;
+  const signer = useServer && serverSigner ? serverSigner : null;
 
   return (
     <>
@@ -112,10 +113,12 @@ export default function App() {
       <WalletUnlockModal
         open={unlockOpen}
         onClose={() => setUnlockOpen(false)}
-        onUnlocked={setServerWallet}
+        onUnlocked={w => setServerSigner(new ServerSigner(w.sessionId, w.address))}
         onUseForSigning={setUseServer}
-        onDestroy={() => setServerWallet(null)}
+        onDestroy={() => setServerSigner(null)}
       />
+
+      <SettingsDrawer onServerSigner={setServerSigner} onUseServer={setUseServer} />
 
       <footer className="footer">
         <div className="footer__inner container">

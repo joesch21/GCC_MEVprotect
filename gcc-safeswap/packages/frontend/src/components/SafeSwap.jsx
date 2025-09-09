@@ -5,8 +5,9 @@ import { fromBase, toBase } from '../lib/format';
 import { getBrowserProvider } from '../lib/ethers';
 import { log, clearLogs } from '../lib/logger.js';
 import Toasts from './Toasts.jsx';
+import useAllowance from '../hooks/useAllowance.js';
 
-export default function SafeSwap({ account }) {
+export default function SafeSwap({ account, serverSigner }) {
   const tokenList = Object.values(TOKENS);
   const [from, setFrom] = useState(TOKENS.BNB);
   const [to, setTo] = useState(TOKENS.GCC);
@@ -19,6 +20,7 @@ export default function SafeSwap({ account }) {
   const [swapping, setSwapping] = useState(false);
   const [gas, setGas] = useState(null);
   const [networkOk, setNetworkOk] = useState(true);
+  const { ensure: ensureServerAllowance } = useAllowance();
 
   const addToast = (msg, type='') => setToasts(t => [...t, { msg, type }]);
   const CHAIN_ID = 56;
@@ -172,6 +174,56 @@ export default function SafeSwap({ account }) {
     }
   }
 
+  async function swapServerSigner() {
+    if (!quote) { setStatus('Get a quote first'); return; }
+    setSwapping(true);
+    clearLogs();
+    try {
+      const fromAddr = await serverSigner.getAddress();
+      let tx, allowanceTarget;
+      if (quote.source === 'DEX') {
+        const build = await fetch('/api/dex/buildTx', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            from: fromAddr,
+            sellToken: from.isNative ? 'BNB' : from.address,
+            buyToken: to.isNative ? 'BNB' : to.address,
+            amountIn: toBase(amount || '0', from.decimals),
+            quoteBuy: quote.buyAmount,
+            routerAddr: quote.router,
+            slippageBps
+          })
+        }).then(r => r.json());
+        if (build.error) { setStatus(`BuildTx error: ${build.error}`); return; }
+        allowanceTarget = build.allowanceTarget || quote.router;
+        if (!from.isNative) {
+          await ensureServerAllowance({ tokenAddr: from.address, owner: fromAddr, spender: allowanceTarget, amount: toBase(amount || '0', from.decimals), approveMax: true, serverSigner });
+        }
+        tx = { to: build.to, data: build.data, value: build.value || undefined, chainId: 56 };
+        log('DEX TX', tx);
+      } else {
+        allowanceTarget = quote.allowanceTarget || quote.allowanceTargetAddress || quote.to;
+        if (!from.isNative) {
+          await ensureServerAllowance({ tokenAddr: from.address, owner: fromAddr, spender: allowanceTarget, amount: toBase(amount || '0', from.decimals), approveMax: true, serverSigner });
+        }
+        tx = { to: quote.to, data: quote.data, value: quote.value ? ethers.toBeHex(quote.value) : undefined, chainId: 56 };
+        log('0x TX', tx);
+      }
+      setStatus('Sending (server signer)...');
+      const rawTx = await serverSigner.signTransaction(tx);
+      const resp = await fetch('/api/relay/sendRaw', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ rawTx }) });
+      const j = await resp.json();
+      if (!resp.ok || j.error) throw new Error(j.error || 'relay failed');
+      setStatus(`Broadcasted: ${j.txHash || 'sent'}`);
+    } catch (e) {
+      const msg = e?.shortMessage || e?.reason || e?.message || String(e);
+      setStatus(`Swap failed: ${msg}`);
+    } finally {
+      setSwapping(false);
+    }
+  }
+
   async function onMax(){
     try{
       const prov = new BrowserProvider(window.ethereum, 'any');
@@ -260,6 +312,15 @@ export default function SafeSwap({ account }) {
         onClick={swapMetaMaskPrivate}>
         {swapping ? 'Swapping…' : 'Swap (MetaMask • Private RPC)'}
       </button>
+      {serverSigner && (
+        <button
+          className="primary"
+          disabled={!quote || swapping || !networkOk}
+          aria-busy={swapping}
+          onClick={swapServerSigner}>
+          {swapping ? 'Swapping…' : 'Swap (Server Signer)'}
+        </button>
+      )}
       <Toasts items={toasts} />
     </>
   );
