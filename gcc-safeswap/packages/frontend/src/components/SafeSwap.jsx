@@ -80,9 +80,10 @@ export default function SafeSwap({ account, serverSigner }) {
         ]);
       } catch (e) {
         const [r0, r1] = await Promise.allSettled([p0x, pDex]);
-        const err = (r0.value && !r0.value.ok && r0.value.json?.message) ||
-                    (r1.value && !r1.value.ok && r1.value.json?.error) ||
-                    'No route';
+        const err =
+          (r0.value && !r0.value.ok && (r0.value.json?.validationErrors?.[0]?.reason || r0.value.json?.error || r0.value.json?.message || `HTTP ${r0.value.status}`)) ||
+          (r1.value && !r1.value.ok && (r1.value.json?.error || `HTTP ${r1.value.status}`)) ||
+          'No route';
         setQuote(null);
         setStatus(`Quote error: ${err}`);
         log(`QUOTE fail: ${err}`);

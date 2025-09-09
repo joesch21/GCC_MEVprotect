@@ -98,7 +98,7 @@ export default function App() {
       <section className="hero container">
         <div className="hero__copy">
           <h1><span className="glow">SafeSwap</span> for Condorians</h1>
-          <p className="lead">Private, MEV-protected swaps with Apple-style simplicity.</p>
+          <p className="lead">Private, MEV-protected swaps.</p>
           <div className="cta">
             <button className="btn btn--primary" onClick={scrollToSwap}>Start Swapping</button>
           </div>

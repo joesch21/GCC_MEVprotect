@@ -1,5 +1,5 @@
 const express = require("express");
-const fetch = require("node-fetch");
+const { safeProxyJson } = require("./util.js");
 
 const router = express.Router();
 const BASE = "https://api.0x.org";
@@ -32,45 +32,31 @@ function buildUrl(base, queryObj) {
 }
 
 // ----- Indicative price -----
-router.get("/price", async (req, res) => {
-  try {
-    const q = { ...req.query };
-    q.chainId = q.chainId || CHAIN_BSC;
+router.get("/price", (req, res) => {
+  const q = { ...req.query };
+  q.chainId = q.chainId || CHAIN_BSC;
 
-    // normalize native BNB ➜ WBNB
-    q.sellToken = normalizeToken(q.sellToken, q.chainId);
-    q.buyToken  = normalizeToken(q.buyToken,  q.chainId);
+  // normalize native BNB ➜ WBNB
+  q.sellToken = normalizeToken(q.sellToken, q.chainId);
+  q.buyToken  = normalizeToken(q.buyToken,  q.chainId);
 
-    const url = buildUrl(`${BASE}/swap/v2/price`, q);
-    const r = await fetch(url, { headers: authHeaders() });
-    const j = await r.json().catch(() => ({}));
-    if (!r.ok) return res.status(r.status).json(j);
-    res.json(j);
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
+  const url = buildUrl(`${BASE}/swap/v2/price`, q);
+  return safeProxyJson(req, res, url, authHeaders());
 });
 
 // ----- Firm quote w/ calldata -----
-router.get("/quote", async (req, res) => {
-  try {
-    const q = { ...req.query };
-    q.chainId = q.chainId || CHAIN_BSC;
+router.get("/quote", (req, res) => {
+  const q = { ...req.query };
+  q.chainId = q.chainId || CHAIN_BSC;
 
-    // normalize native BNB ➜ WBNB
-    q.sellToken = normalizeToken(q.sellToken, q.chainId);
-    q.buyToken  = normalizeToken(q.buyToken,  q.chainId);
+  // normalize native BNB ➜ WBNB
+  q.sellToken = normalizeToken(q.sellToken, q.chainId);
+  q.buyToken  = normalizeToken(q.buyToken,  q.chainId);
 
-    console.log("0x/quote params:", q);
+  console.log("0x/quote params:", q);
 
-    const url = buildUrl(`${BASE}/swap/v2/quote`, q);
-    const r = await fetch(url, { headers: authHeaders() });
-    const j = await r.json().catch(() => ({}));
-    if (!r.ok) return res.status(r.status).json(j);
-    res.json(j);
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
+  const url = buildUrl(`${BASE}/swap/v2/quote`, q);
+  return safeProxyJson(req, res, url, authHeaders());
 });
 
 module.exports = router;
