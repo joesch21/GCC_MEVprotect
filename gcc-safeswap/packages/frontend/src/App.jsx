@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Connect from './components/Connect.jsx';
 import SafeSwap from './components/SafeSwap.jsx';
 import WalletUnlockModal from './components/WalletUnlockModal.jsx';
@@ -8,6 +8,7 @@ import { getBrowserProvider } from './lib/ethers.js';
 import LogTail from "./components/LogTail.jsx";
 
 export default function App() {
+  const [perfMode, setPerfMode] = useState(() => localStorage.getItem("perfMode") === "1");
   const [account, setAccount] = useState(null);
   const { shieldOn, refreshShield } = useShieldStatus();
   const [unlockOpen, setUnlockOpen] = useState(false);
@@ -17,7 +18,7 @@ export default function App() {
     document
       .getElementById("swap")
       ?.scrollIntoView({ behavior: "smooth", block: "start" });
-  };
+  }; 
 
   useEffect(() => {
     (async () => {
@@ -32,6 +33,24 @@ export default function App() {
     window.ethereum.on('chainChanged', refreshShield);
     return () => { window.ethereum && window.ethereum.removeListener('chainChanged', refreshShield); };
   }, [refreshShield]);
+
+  // Respect OS "Reduce Motion" on first visit
+  useEffect(() => {
+    const prefersReduced = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+    if (prefersReduced && localStorage.getItem("perfMode") == null) {
+      setPerfMode(true);
+      localStorage.setItem("perfMode", "1");
+    }
+  }, []);
+
+  // Toggle body class for CSS switches
+  useEffect(() => {
+    document.documentElement.classList.toggle("perf-mode", !!perfMode);
+    if (perfMode) localStorage.setItem("perfMode", "1");
+    else localStorage.removeItem("perfMode");
+  }, [perfMode]);
+
+  const togglePerf = useCallback(() => setPerfMode(v => !v), []);
 
   useEffect(() => {
     if (window.location.pathname === "/swap") {
@@ -52,12 +71,17 @@ export default function App() {
           <a href="/" className="brand brand--neon" aria-label="GCC SafeSwap Home">
             <span>GCC SafeSwap</span>
           </a>
-          <div className="nav__links">
+          <nav className="nav__links" aria-label="Primary">
             <a href="/dashboard">Dashboard</a>
             <a href="/stake">Stake</a>
             <a href="/swap" className="pill pill--accent">Swap</a>
+          </nav>
+          <div className="nav__right">
+            <button className="btn" onClick={togglePerf} aria-pressed={perfMode}>
+              {perfMode ? "Performance Mode: ON" : "Performance Mode: OFF"}
+            </button>
+            <Connect />
           </div>
-          <Connect />
         </div>
       </header>
 
