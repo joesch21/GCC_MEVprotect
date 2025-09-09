@@ -59,6 +59,30 @@ input, select, button { font-size:16px; -webkit-tap-highlight-color: transparent
   .bg-matrix{ animation-duration:45s; } /* calmer motion on phones */
 }
 
+/* Mobile GPU savings: avoid blur on small screens (still looks great) */
+@media (max-width:600px){
+  .holo .card{
+    backdrop-filter:none;
+    background:rgba(5,7,10,.92);
+  }
+}
+
+/* Slightly reduce BG intensity on mobile for readability */
+@media (max-width:600px){
+  .bg-matrix{ opacity:.36; }
+}
+
+/* ---------- Performance Mode switch (applies when <html>.perf-mode) ---------- */
+html.perf-mode .bg-matrix{
+  opacity:.28;
+  animation:none !important;
+}
+html.perf-mode .holo .card{
+  backdrop-filter:none !important;
+  background:rgba(5,7,10,.92);
+  box-shadow:0 8px 30px rgba(0,0,0,.35);
+}
+
 /* ---------- Container / Safe areas ---------- */
 .shell{
   max-width:1100px; margin:0 auto;

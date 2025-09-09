@@ -5,6 +5,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>GCC SafeSwap</title>
     <!-- No CSP meta in dev; add a strict CSP only when building for production -->
+    <link rel="preconnect" href="/" />
+
+    <!-- OPTIONAL brand font (disabled by default). When enabled, add the WOFF2 file and uncomment both lines:
+    <link rel="preload" as="font" href="/assets/brand.woff2" type="font/woff2" crossorigin>
+    <style>
+      @font-face{
+        font-family:"Condor Display";
+        src:url("/assets/brand.woff2") format("woff2");
+        font-weight:400 700; font-style:normal; font-display:swap;
+        unicode-range: U+0020-007E; /* subset: ASCII for headings */
+      }
+      .brand--neon span{ font-family:"Condor Display", system-ui, -apple-system, Segoe UI, Inter, Roboto, Arial, sans-serif; }
+    </style>
+    -->
   </head>
   <body>
     <div id="root"></div>
