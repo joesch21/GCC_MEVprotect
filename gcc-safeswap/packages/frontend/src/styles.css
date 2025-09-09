@@ -311,6 +311,15 @@ footer{ margin-top:auto; }
   .actions button, .btn, .btn--primary { width: 100%; }
   .holo { margin: 16px auto; }
   .holo .card { padding: 14px; }
-  .debug-log { display: none; }
-  .debug-toggle { display:inline-block; padding:6px 10px; border:1px solid var(--line); border-radius:8px; }
+}
+
+.logtail-wrap { position: fixed; right: 12px; bottom: 12px; z-index: 40; }
+.debug-log { width: 360px; max-height: 220px; overflow: hidden; background:#0b1220; border:1px solid var(--line); border-radius:10px; }
+.debug-log__header { display:flex; justify-content:space-between; align-items:center; padding:8px 10px; border-bottom:1px solid rgba(0,255,255,.2); }
+.debug-log__body { margin:0; padding:10px; max-height:170px; overflow:auto; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; font-size:12px; line-height:1.35; color:#d1faff; }
+
+.debug-toggle { padding:6px 10px; border:1px solid var(--line); border-radius:8px; background:rgba(0,0,0,.4); color:var(--cyan); margin-bottom:8px; }
+
+@media (max-width: 480px) {
+  .debug-log { width: 92vw; right: 4vw; left: 4vw; }
 }
