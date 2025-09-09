@@ -1,4 +1,5 @@
 const express = require('express');
+const fetch = require('node-fetch');
 const { ethers } = require('ethers');
 const { PANCAKE, APESWAP } = require('../lib/routers.cjs');
 
@@ -81,6 +82,69 @@ router.get('/quote', async (req, res) => {
     res.json(best);
   } catch (e) {
     res.status(500).json({ ok: false, status: 500, error: e.message });
+  }
+});
+
+async function buildRouterTxFromQuote(q, taker, slippageBps=200){
+  const iface = new ethers.Interface([
+    "function swapExactTokensForETHSupportingFeeOnTransferTokens(uint amountIn, uint amountOutMin, address[] path, address to, uint deadline)",
+    "function swapExactETHForTokensSupportingFeeOnTransferTokens(uint amountOutMin, address[] path, address to, uint deadline) payable",
+    "function swapExactTokensForTokensSupportingFeeOnTransferTokens(uint amountIn, uint amountOutMin, address[] path, address to, uint deadline)"
+  ]);
+  const deadline = Math.floor(Date.now()/1000) + 60*10;
+  const minOut = BigInt(q.buyAmount) * BigInt(10_000 - Number(slippageBps)) / 10_000n;
+  const sellsNative = /^0xEeee/i.test(q.path[0]) || q.path[0] === 'BNB';
+  const buysNative  = /^0xEeee/i.test(q.path[q.path.length-1]) || q.path[q.path.length-1] === 'BNB';
+  const finalPath = q.path.map(a => /^0xEeee/i.test(a) || a === 'BNB' ? WBNB : a);
+  let data, value = '0x0';
+  if (sellsNative) {
+    data = iface.encodeFunctionData(
+      'swapExactETHForTokensSupportingFeeOnTransferTokens',
+      [minOut.toString(), finalPath, taker, deadline]
+    );
+    value = toHex(q.sellAmount);
+  } else if (buysNative) {
+    data = iface.encodeFunctionData(
+      'swapExactTokensForETHSupportingFeeOnTransferTokens',
+      [q.sellAmount, minOut.toString(), finalPath, taker, deadline]
+    );
+  } else {
+    data = iface.encodeFunctionData(
+      'swapExactTokensForTokensSupportingFeeOnTransferTokens',
+      [q.sellAmount, minOut.toString(), finalPath, taker, deadline]
+    );
+  }
+  return { to: q.router, data, value };
+}
+
+router.get('/buildTx', async (req, res) => {
+  try {
+    const qs = new URLSearchParams(req.query);
+    const port = process.env.PORT || 8787;
+    const r0x = await fetch(`http://localhost:${port}/api/0x/quote?${qs}`);
+    let j0x, ok0x = false;
+    try {
+      j0x = await r0x.json();
+      ok0x = r0x.ok && j0x?.to && j0x?.data;
+    } catch {}
+    if (ok0x) {
+      const tx = {
+        to: j0x.to,
+        data: j0x.data,
+        ...(j0x.value ? { value: j0x.value } : {}),
+        ...(j0x.gas ? { gas: toHex(j0x.gas) } : {})
+      };
+      return res.json({ source: '0x', tx, quote: j0x });
+    }
+
+    const rDex = await fetch(`http://localhost:${port}/api/dex/quote?${qs}`);
+    const jDex = await rDex.json();
+    if (!rDex.ok) return res.status(502).json({ ok: false, error: 'amm-quote-failed', detail: jDex });
+    const tx = await buildRouterTxFromQuote(jDex, req.query.taker, req.query.slippageBps);
+    return res.json({ source: 'dex', tx, quote: jDex });
+  } catch (e) {
+    console.error('buildTx error', e);
+    res.status(500).json({ ok: false, error: e.message });
   }
 });
 

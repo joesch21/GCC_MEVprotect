@@ -20,7 +20,9 @@ function reqLog(req, res, next) {
   const t0 = Date.now();
   res.on("finish", () => {
     const ms = Date.now() - t0;
-    console.log(`[${new Date().toISOString()}] ${req.method} ${req.originalUrl} -> ${res.statusCode} ${ms}ms`);
+    const body = req.body && Object.keys(req.body).length ? JSON.stringify(req.body).slice(0,200) : '';
+    const bodyPart = body ? ` body=${body}` : '';
+    console.log(`${req.method} ${req.path} -> ${res.statusCode} ${ms}ms${bodyPart}`);
   });
   next();
 }
