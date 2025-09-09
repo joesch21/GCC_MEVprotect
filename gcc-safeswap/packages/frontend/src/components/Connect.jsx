@@ -22,10 +22,21 @@ export default function Connect({ unlockedAddr }) {
         const prov = getBrowserProvider();
         const acc = await prov.send("eth_accounts", []);
         if (acc?.[0]) setAccount(acc[0]);
-        prov.on("accountsChanged", (a) => setAccount(a?.[0] || ""));
-        prov.on("chainChanged", () => window.location.reload());
       } catch {}
     })();
+
+    const onAccountsChanged = (a) => setAccount(a?.[0] || "");
+    const onChainChanged = () => window.location.reload();
+    if (window.ethereum?.on) {
+      window.ethereum.on("accountsChanged", onAccountsChanged);
+      window.ethereum.on("chainChanged", onChainChanged);
+    }
+    return () => {
+      if (window.ethereum?.removeListener) {
+        window.ethereum.removeListener("accountsChanged", onAccountsChanged);
+        window.ethereum.removeListener("chainChanged", onChainChanged);
+      }
+    };
   }, []);
 
   useEffect(() => {

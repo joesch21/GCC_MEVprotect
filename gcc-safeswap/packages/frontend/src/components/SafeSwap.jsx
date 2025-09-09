@@ -2,10 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { ethers, BrowserProvider, Contract } from 'ethers';
 import TOKENS from '../lib/tokens-bsc.js';
 import { fromBase, toBase } from '../lib/format';
-import { getBrowserProvider } from '../lib/ethers';
 import { log, clearLogs } from '../lib/logger.js';
 import Toasts from './Toasts.jsx';
 import useAllowance from '../hooks/useAllowance.js';
+import { fetchJSON } from '../lib/net.js';
+
+let inflight;
 
 export default function SafeSwap({ account, serverSigner }) {
   const tokenList = Object.values(TOKENS);
@@ -24,7 +26,6 @@ export default function SafeSwap({ account, serverSigner }) {
 
   const addToast = (msg, type='') => setToasts(t => [...t, { msg, type }]);
   const CHAIN_ID = 56;
-  const to0xParam = t => t.isNative ? 'BNB' : t.address;
   const REFLECTION_SET = new Set(['0x092ac429b9c3450c9909433eb0662c3b7c13cf9a']);
 
   useEffect(() => {
@@ -40,53 +41,64 @@ export default function SafeSwap({ account, serverSigner }) {
   }, []);
 
   async function getQuote() {
-    try{
+    inflight?.abort?.();
+    inflight = new AbortController();
+
+    try {
       setStatus('Fetching quote…');
       setQuote(null);
       setGas(null);
       clearLogs();
-
-      let taker = '';
-      try { taker = (await getBrowserProvider().send('eth_accounts', []))?.[0] || ''; } catch {}
+      log('QUOTE start');
 
       const sellAmount = toBase(amount || '0', from.decimals);
-      const q0 = new URLSearchParams({
-        chainId: '56',
-        sellToken: to0xParam(from),
-        buyToken:  to0xParam(to),
-        sellAmount,
-        slippageBps: String(slippageBps)
-      });
-      if (taker) q0.set('taker', taker);
-
-      let r = await fetch(`/api/0x/quote?${q0}`);
-      let j = await r.json().catch(()=> ({}));
-
-      if (r.ok && !j.error && !j.code) {
-        const tx = { to: j.to, data: j.data, value: j.value ? ethers.toBeHex(j.value) : undefined };
-        const fee = await window.ethereum.request({ method: 'eth_estimateGas', params: [tx] }).catch(()=>null);
-        setGas(fee);
-        setQuote({ ...j, source: '0x' });
-        setStatus('Quote ready.');
-        return;
-      }
-
-      const qd = new URLSearchParams({
-        chainId: '56',
+      const qsBase = {
+        chainId: String(CHAIN_ID),
         sellToken: from.isNative ? 'BNB' : from.address,
-        buyToken:  to.isNative   ? 'BNB' : to.address,
-        sellAmount
-      });
-      r = await fetch(`/api/dex/quote?${qd}`);
-      j = await r.json();
+        buyToken: to.isNative ? 'BNB' : to.address,
+        sellAmount,
+        taker: account,
+        slippageBps: String(slippageBps)
+      };
 
-      if (!r.ok) {
-        setStatus(`Quote error: ${j.error || j.message || `HTTP ${r.status}`}`);
+      const ZEROX_NATIVE = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE';
+      const q0x = new URLSearchParams({
+        ...qsBase,
+        sellToken: from.isNative ? ZEROX_NATIVE : from.address,
+        buyToken: to.isNative ? ZEROX_NATIVE : to.address
+      }).toString();
+      const qDex = new URLSearchParams(qsBase).toString();
+
+      const p0x = fetchJSON(`/api/0x/quote?${q0x}`, { timeoutMs: 6500, signal: inflight.signal });
+      const pDex = fetchJSON(`/api/dex/quote?${qDex}`, { timeoutMs: 6500, signal: inflight.signal });
+
+      let winner;
+      try {
+        winner = await Promise.any([
+          p0x.then(r => (r.ok ? { type: 'zeroex', ...r.json } : Promise.reject(r))),
+          pDex.then(r => (r.ok ? { type: 'dex', ...r.json } : Promise.reject(r)))
+        ]);
+      } catch (e) {
+        const [r0, r1] = await Promise.allSettled([p0x, pDex]);
+        const err = (r0.value && !r0.value.ok && r0.value.json?.message) ||
+                    (r1.value && !r1.value.ok && r1.value.json?.error) ||
+                    'No route';
+        setQuote(null);
+        setStatus(`Quote error: ${err}`);
+        log(`QUOTE fail: ${err}`);
         return;
       }
-      setQuote({ ...j, source: 'DEX' });
-      setStatus('Quote ready (DEX).');
-    }catch(e){
+
+      if (winner.type === 'zeroex' && winner.to && winner.data) {
+        const tx = { to: winner.to, data: winner.data, value: winner.value ? ethers.toBeHex(winner.value) : undefined };
+        const fee = await window.ethereum.request({ method: 'eth_estimateGas', params: [tx] }).catch(() => null);
+        setGas(fee);
+      }
+
+      setQuote(winner);
+      setStatus(`Quote ready (${winner.type === 'dex' ? winner.routerName : '0x'})`);
+      log(`QUOTE win: ${winner.type}`);
+    } catch (e) {
       setStatus(`Quote failed: ${e.message || String(e)}`);
     }
   }
@@ -122,7 +134,7 @@ export default function SafeSwap({ account, serverSigner }) {
 
       let tx, allowanceTarget;
 
-      if (quote.source === 'DEX') {
+      if (quote.type === 'dex') {
         const build = await fetch('/api/dex/buildTx', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
@@ -181,7 +193,7 @@ export default function SafeSwap({ account, serverSigner }) {
     try {
       const fromAddr = await serverSigner.getAddress();
       let tx, allowanceTarget;
-      if (quote.source === 'DEX') {
+      if (quote.type === 'dex') {
         const build = await fetch('/api/dex/buildTx', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
@@ -277,7 +289,16 @@ export default function SafeSwap({ account, serverSigner }) {
           ))}
         </div>
       </div>
-      <button className="primary" onClick={getQuote}>Get Quote</button>
+      <div className="actions">
+        <button className="btn btn--primary" aria-busy={status.startsWith('Fetching')} onClick={getQuote}>
+          {status.startsWith('Fetching') ? 'Fetching…' : 'Get Quote'}
+        </button>
+        {status.startsWith('Fetching') && (
+          <button className="btn" onClick={() => { inflight?.abort?.(); setStatus('Cancelled.'); }}>
+            Cancel
+          </button>
+        )}
+      </div>
       {status && <p className="status">{status}</p>}
       {involvesReflection && (
         <div className="toast warn">
@@ -286,7 +307,7 @@ export default function SafeSwap({ account, serverSigner }) {
       )}
       {quote && (
         <div className="quote">
-          {quote.source === 'DEX' ? (
+          {quote.type === 'dex' ? (
             <>
               <div className="badge">DEX</div>
               <div>Buy Amount: ~{fromBase(quote.buyAmount, to.decimals)} {to.symbol}</div>
@@ -307,7 +328,7 @@ export default function SafeSwap({ account, serverSigner }) {
       {!networkOk && <div className="error">Switch to BNB Chain</div>}
       <button
         className="primary"
-        disabled={!quote || swapping || !networkOk}
+        disabled={!quote || (quote.type==='zeroex' && !quote.to) || swapping || !networkOk}
         aria-busy={swapping}
         onClick={swapMetaMaskPrivate}>
         {swapping ? 'Swapping…' : 'Swap (MetaMask • Private RPC)'}
@@ -315,7 +336,7 @@ export default function SafeSwap({ account, serverSigner }) {
       {serverSigner && (
         <button
           className="primary"
-          disabled={!quote || swapping || !networkOk}
+          disabled={!quote || (quote.type==='zeroex' && !quote.to) || swapping || !networkOk}
           aria-busy={swapping}
           onClick={swapServerSigner}>
           {swapping ? 'Swapping…' : 'Swap (Server Signer)'}
