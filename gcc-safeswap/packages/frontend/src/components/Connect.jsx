@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { getBrowserProvider } from "../lib/ethers.js";
 import useBalances from "../hooks/useBalances.js";
 import TOKENS from "../lib/tokens-bsc.js";
-import { isMobile, metamaskDappLink } from "../lib/deeplink.js";
+import { isMobile, dappDeepLink, addNetworkDeepLink } from "../lib/metamask.js";
 
 export default function Connect({ unlockedAddr }) {
   const [account, setAccount] = useState("");
@@ -16,6 +16,22 @@ export default function Connect({ unlockedAddr }) {
     setAccount(accounts[0]);
   }
 
+  async function switchToPrivateRPC() {
+    const prov = getBrowserProvider();
+    const BSC_PARAMS = {
+      chainId: "0x38",
+      chainName: "BNB Smart Chain (MEV Guard)",
+      nativeCurrency: { name: "BNB", symbol: "BNB", decimals: 18 },
+      rpcUrls: ["https://bscrpc.pancakeswap.finance"],
+      blockExplorerUrls: ["https://bscscan.com"]
+    };
+    try {
+      await window.ethereum.request({ method: "wallet_addEthereumChain", params: [BSC_PARAMS] });
+    } catch {
+      await window.ethereum.request({ method: "wallet_switchEthereumChain", params: [{ chainId: BSC_PARAMS.chainId }] });
+    }
+  }
+
   useEffect(() => {
     (async () => {
       try {
@@ -25,17 +41,16 @@ export default function Connect({ unlockedAddr }) {
       } catch {}
     })();
 
-    const onAccountsChanged = (a) => setAccount(a?.[0] || "");
-    const onChainChanged = () => window.location.reload();
-    if (window.ethereum?.on) {
-      window.ethereum.on("accountsChanged", onAccountsChanged);
-      window.ethereum.on("chainChanged", onChainChanged);
-    }
+    if (!window.ethereum) return;
+    const onAccounts = (accs) => setAccount(accs?.[0] || "");
+    const onChain = () => {};
+    window.ethereum.on("accountsChanged", onAccounts);
+    window.ethereum.on("chainChanged", onChain);
     return () => {
-      if (window.ethereum?.removeListener) {
-        window.ethereum.removeListener("accountsChanged", onAccountsChanged);
-        window.ethereum.removeListener("chainChanged", onChainChanged);
-      }
+      try {
+        window.ethereum.removeListener("accountsChanged", onAccounts);
+        window.ethereum.removeListener("chainChanged", onChain);
+      } catch {}
     };
   }, []);
 
@@ -71,9 +86,15 @@ export default function Connect({ unlockedAddr }) {
       ) : (
         <>
           <button onClick={connect}>Connect MetaMask</button>
-          {isMobile() && <a className="pill pill--success" href={metamaskDappLink()}>Open in MetaMask</a>}
+          {isMobile() && (
+            <>
+              <a className="btn" href={dappDeepLink(window.location.origin)}>Open in MetaMask</a>
+              <a className="btn" href={addNetworkDeepLink()}>Add Private RPC</a>
+            </>
+          )}
         </>
       )}
+      <button className="btn" onClick={switchToPrivateRPC}>Use Private RPC</button>
     </div>
   );
 }

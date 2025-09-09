@@ -30,16 +30,14 @@ export default function App() {
         if (acc?.[0]) setAccount(acc[0]);
       } catch {}
     })();
+
+    if (!window.ethereum) return;
     const onAccountsChanged = a => setAccount(a?.[0] || '');
-    if (window.ethereum?.on) {
-      window.ethereum.on('accountsChanged', onAccountsChanged);
-      window.ethereum.on('chainChanged', refreshShield);
-    }
+    window.ethereum.on('accountsChanged', onAccountsChanged);
+    window.ethereum.on('chainChanged', refreshShield);
     return () => {
-      if (window.ethereum?.removeListener) {
-        window.ethereum.removeListener('accountsChanged', onAccountsChanged);
-        window.ethereum.removeListener('chainChanged', refreshShield);
-      }
+      window.ethereum.removeListener('accountsChanged', onAccountsChanged);
+      window.ethereum.removeListener('chainChanged', refreshShield);
     };
   }, [refreshShield]);
 
