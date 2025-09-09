@@ -35,7 +35,7 @@ function toHex(v){ return ethers.toBeHex(v); }
 router.get('/quote', async (req, res) => {
   try {
     const chainId = Number(req.query.chainId || CHAIN_BSC);
-    if (chainId !== CHAIN_BSC) return res.status(400).json({ error: 'Only BNB Chain (56) supported' });
+    if (chainId !== CHAIN_BSC) return res.status(400).json({ ok: false, status: 400, error: 'Only BNB Chain (56) supported' });
 
     const rpc = process.env.PRIVATE_RPC_URL;
     const provider = new ethers.JsonRpcProvider(rpc, 56);
@@ -77,10 +77,10 @@ router.get('/quote', async (req, res) => {
       }
     }
 
-    if (!best) return res.status(404).json({ error: 'No route on Pancake/ApeSwap' });
+    if (!best) return res.status(404).json({ ok: false, status: 404, error: 'No route on Pancake/ApeSwap' });
     res.json(best);
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    res.status(500).json({ ok: false, status: 500, error: e.message });
   }
 });
 
