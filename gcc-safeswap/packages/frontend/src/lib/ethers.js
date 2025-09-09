@@ -25,3 +25,5 @@ export const getBurner = () => {
 export const getRpcProvider = () => new JsonRpcProvider('https://bscrpc.pancakeswap.finance');
 
 export { Contract, MaxUint256 };
+
+export const erc20 = (address, provider) => new Contract(address, ['function balanceOf(address owner) view returns (uint256)'], provider);

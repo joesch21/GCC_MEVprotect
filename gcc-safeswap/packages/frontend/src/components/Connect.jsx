@@ -4,12 +4,14 @@ import useBalances from "../hooks/useBalances.js";
 import TOKENS from "../lib/tokens-bsc.js";
 import { isMobile, addNetworkDeepLink } from "../lib/metamask.js";
 import { openMetaMaskDapp } from "../lib/deeplink.js";
+import useGccUsd from "../hooks/useGccUsd.js";
 
 export default function Connect({ unlockedAddr }) {
   const [account, setAccount] = useState("");
   const [bal, setBal] = useState({});
   const { fetchBNBAndTokens } = useBalances();
   const activeAddress = unlockedAddr || account;
+  const { usd, gcc, price, loading, source } = useGccUsd(activeAddress);
 
   async function connect() {
     const prov = getBrowserProvider();
@@ -80,15 +82,19 @@ export default function Connect({ unlockedAddr }) {
         <>
           <span className="pill">{activeAddress.slice(0,6)}…{activeAddress.slice(-4)}</span>
           <span className="pill pill--success">BNB {Number(bal?.BNB?.amount || 0).toFixed(4)}</span>
-          <span className="pill pill--accent">GCC {Number(bal?.GCC?.amount || 0).toFixed(2)}</span>
-          {/* mini portfolio dropdown */}
-          <details className="pill" style={{cursor:"pointer"}}>
-            <summary>Portfolio</summary>
-            <div style={{paddingTop:6}}>
-              <div>WBNB {Number(bal?.WBNB?.amount || 0).toFixed(4)}</div>
-              <div>USDT {Number(bal?.USDT?.amount || 0).toFixed(2)}</div>
-            </div>
-          </details>
+            <span className="pill pill--accent">GCC {Number(bal?.GCC?.amount || 0).toFixed(2)}</span>
+            <details className="pill" style={{cursor:"pointer"}}>
+              <summary>
+                Portfolio {loading ? '' : (usd != null ? `• $${usd.toFixed(2)}` : '')}
+              </summary>
+              <div style={{paddingTop:6}}>
+                {gcc != null && <div>GCC {gcc.toFixed(2)}</div>}
+                {price != null && <div>Price ${price.toFixed(4)} {source ? `(${source})` : ''}</div>}
+                {usd != null && <div>Total ${usd.toFixed(2)}</div>}
+                <div>WBNB {Number(bal?.WBNB?.amount || 0).toFixed(4)}</div>
+                <div>USDT {Number(bal?.USDT?.amount || 0).toFixed(2)}</div>
+              </div>
+            </details>
         </>
       ) : (
         <>

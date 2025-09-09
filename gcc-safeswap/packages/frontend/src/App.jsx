@@ -84,9 +84,11 @@ export default function App() {
             <a href="/swap" className="pill pill--accent">Swap</a>
           </nav>
           <div className="nav__right">
-            <button className="btn" onClick={togglePerf} aria-pressed={perfMode}>
-              {perfMode ? "Performance Mode: ON" : "Performance Mode: OFF"}
-            </button>
+              {false && (
+                <button className="btn" onClick={togglePerf} aria-pressed={perfMode}>
+                  {perfMode ? "Performance Mode: ON" : "Performance Mode: OFF"}
+                </button>
+              )}
             <button className="btn" aria-label="Settings" onClick={() => setSettingsOpen(true)}>
               ⚙️ Settings
             </button>

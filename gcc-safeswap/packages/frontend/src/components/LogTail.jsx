@@ -3,16 +3,25 @@ import { getLogs, clearLogs } from "../lib/logger.js";
 
 export default function LogTail(){
   const [lines, setLines] = useState(getLogs());
+  const [show, setShow] = useState(false);
+  const [mobile, setMobile] = useState(typeof window !== 'undefined' && window.innerWidth <= 480);
   useEffect(() => {
     const id = setInterval(() => setLines(getLogs()), 800);
     return () => clearInterval(id);
   }, []);
+  useEffect(() => {
+    const onResize = () => setMobile(window.innerWidth <= 480);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
   return (
-    <div className="toasts" style={{right:12, bottom:12, maxWidth:520}}>
-      <div className="toast">
-        <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", gap:8}}>
-          <strong>Debug Log</strong>
-          <div>
+    <>
+      {mobile && <button className="debug-toggle" onClick={()=>setShow(s=>!s)}>Logs</button>}
+      <div className="debug-log toasts" style={{right:12, bottom:12, maxWidth:520, display: mobile && !show ? 'none' : undefined}}>
+        <div className="toast">
+          <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", gap:8}}>
+            <strong>Debug Log</strong>
+            <div>
             <button onClick={()=>{
               const text = lines.map(l=>new Date(l.ts).toISOString()+" "+l.text).join("\n");
               navigator.clipboard?.writeText(text);
@@ -26,7 +35,7 @@ export default function LogTail(){
           }
         </div>
       </div>
-    </div>
+    </>
   );
 }
 
