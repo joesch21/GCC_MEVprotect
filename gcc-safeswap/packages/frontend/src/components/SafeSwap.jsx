@@ -22,6 +22,7 @@ export default function SafeSwap({ account, serverSigner }) {
   const [swapping, setSwapping] = useState(false);
   const [gas, setGas] = useState(null);
   const [networkOk, setNetworkOk] = useState(true);
+  const [lastParams, setLastParams] = useState(null);
   const { ensure: ensureServerAllowance } = useAllowance();
 
   const addToast = (msg, type='') => setToasts(t => [...t, { msg, type }]);
@@ -49,7 +50,6 @@ export default function SafeSwap({ account, serverSigner }) {
       setQuote(null);
       setGas(null);
       clearLogs();
-      log('QUOTE start');
 
       const sellAmount = toBase(amount || '0', from.decimals);
       const qsBase = {
@@ -67,38 +67,27 @@ export default function SafeSwap({ account, serverSigner }) {
         sellToken: from.isNative ? ZEROX_NATIVE : from.address,
         buyToken: to.isNative ? ZEROX_NATIVE : to.address
       }).toString();
-      const qDex = new URLSearchParams(qsBase).toString();
 
-      const p0x = fetchJSON(`/api/0x/quote?${q0x}`, { timeoutMs: 6500, signal: inflight.signal });
-      const pDex = fetchJSON(`/api/dex/quote?${qDex}`, { timeoutMs: 6500, signal: inflight.signal });
-
-      let winner;
-      try {
-        winner = await Promise.any([
-          p0x.then(r => (r.ok ? { type: 'zeroex', ...r.json } : Promise.reject(r))),
-          pDex.then(r => (r.ok ? { type: 'dex', ...r.json } : Promise.reject(r)))
-        ]);
-      } catch (e) {
-        const [r0, r1] = await Promise.allSettled([p0x, pDex]);
-        const err =
-          (r0.value && !r0.value.ok && (r0.value.json?.validationErrors?.[0]?.reason || r0.value.json?.error || r0.value.json?.message || `HTTP ${r0.value.status}`)) ||
-          (r1.value && !r1.value.ok && (r1.value.json?.error || `HTTP ${r1.value.status}`)) ||
-          'No route';
-        setQuote(null);
-        setStatus(`Quote error: ${err}`);
-        log(`QUOTE fail: ${err}`);
+      const r0x = await fetchJSON(`/api/0x/quote?${q0x}`, { timeoutMs: 6500, signal: inflight.signal });
+      if (r0x.ok && r0x.json?.to && r0x.json?.data) {
+        setQuote({ type: 'zeroex', ...r0x.json });
+        setLastParams(qsBase);
+        setStatus('Quote ready (0x)');
         return;
       }
 
-      if (winner.type === 'zeroex' && winner.to && winner.data) {
-        const tx = { to: winner.to, data: winner.data, value: winner.value ? ethers.toBeHex(winner.value) : undefined };
-        const fee = await window.ethereum.request({ method: 'eth_estimateGas', params: [tx] }).catch(() => null);
-        setGas(fee);
-      }
+      addToast('0x quote unavailable; using DEX route');
 
-      setQuote(winner);
-      setStatus(`Quote ready (${winner.type === 'dex' ? winner.routerName : '0x'})`);
-      log(`QUOTE win: ${winner.type}`);
+      const qDex = new URLSearchParams(qsBase).toString();
+      const rDex = await fetchJSON(`/api/dex/quote?${qDex}`, { timeoutMs: 6500, signal: inflight.signal });
+      if (!rDex.ok) {
+        const err = rDex.json?.error || `HTTP ${rDex.status}`;
+        setStatus(`Quote error: ${err}`);
+        return;
+      }
+      setQuote({ type: 'dex', ...rDex.json });
+      setLastParams(qsBase);
+      setStatus('Quote ready (DEX)');
     } catch (e) {
       setStatus(`Quote failed: ${e.message || String(e)}`);
     }
@@ -124,7 +113,11 @@ export default function SafeSwap({ account, serverSigner }) {
   }
 
   async function swapMetaMaskPrivate() {
-    if (!quote) { setStatus('Get a quote first'); return; }
+    if (!quote || !lastParams) { setStatus('Get a quote first'); return; }
+    if (!window.ethereum) {
+      window.location.href = `https://metamask.app.link/dapp/${window.location.host}`;
+      return;
+    }
 
     setSwapping(true);
     clearLogs();
@@ -133,98 +126,50 @@ export default function SafeSwap({ account, serverSigner }) {
       const signer = await prov.getSigner();
       const fromAddr = await signer.getAddress();
 
-      let tx, allowanceTarget;
-
-      if (quote.type === 'dex') {
-        const build = await fetch('/api/dex/buildTx', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({
-            from: fromAddr,
-            sellToken: from.isNative ? 'BNB' : from.address,
-            buyToken:  to.isNative   ? 'BNB' : to.address,
-            amountIn:  toBase(amount || '0', from.decimals),
-            quoteBuy:  quote.buyAmount,
-            routerAddr: quote.router,
-            slippageBps
-          })
-        }).then(r => r.json());
-
-        if (build.error) { setStatus(`BuildTx error: ${build.error}`); return; }
-        allowanceTarget = build.allowanceTarget || quote.router;
-        if (!from.isNative) await ensureAllowance(allowanceTarget);
-
-        tx = { to: build.to, data: build.data, value: build.value || undefined };
-        const fee = await window.ethereum.request({ method: 'eth_estimateGas', params: [tx] }).catch(()=>null);
-        setGas(fee);
-        log('DEX TX', tx);
-      } else {
-        allowanceTarget = quote.allowanceTarget || quote.allowanceTargetAddress || quote.to;
-        if (!from.isNative) await ensureAllowance(allowanceTarget);
-        tx = { to: quote.to, data: quote.data, value: quote.value ? ethers.toBeHex(quote.value) : undefined };
-        const fee = await window.ethereum.request({ method: 'eth_estimateGas', params: [tx] }).catch(()=>null);
-        setGas(fee);
-        log('0x TX', tx);
-      }
-
+      const qs = new URLSearchParams({ ...lastParams, taker: fromAddr }).toString();
+      const build = await fetchJSON(`/api/dex/buildTx?${qs}`);
+      if (!build.ok) { setStatus(`BuildTx error: ${build.json?.error || build.status}`); return; }
+      const { tx, quote: q, source } = build.json;
+      const allowanceTarget = source === '0x'
+        ? (q.allowanceTarget || q.allowanceTargetAddress || tx.to)
+        : (q.router || tx.to);
+      if (!from.isNative) await ensureAllowance(allowanceTarget);
+      const fee = await window.ethereum.request({ method: 'eth_estimateGas', params: [tx] }).catch(()=>null);
+      setGas(fee);
       setStatus('Sending (private RPC)...');
       const sent = await signer.sendTransaction(tx);
-      setStatus(`Broadcasted: ${sent.hash}`);
+      setStatus(`Sent: ${sent.hash}`);
       const rec = await sent.wait();
-      setStatus(`Done in block ${rec.blockNumber}`);
+      setStatus(`Confirmed in block ${rec.blockNumber}`);
       log('RECEIPT', rec);
-    }catch(e){
+    } catch(e) {
       console.error(e);
       const msg = e?.shortMessage || e?.reason || e?.message || String(e);
-      let hint = "";
-      if (/INSUFFICIENT_OUTPUT_AMOUNT/i.test(msg)) {
-        hint = " Try increasing slippage to 2–5% or reduce trade size.";
-      }
-      setStatus(`Swap failed: ${msg}.${hint}`);
+      setStatus(`Swap failed: ${msg}`);
       log('SWAP ERROR', e);
-    }finally{
+    } finally {
       setSwapping(false);
     }
   }
 
   async function swapServerSigner() {
-    if (!quote) { setStatus('Get a quote first'); return; }
+    if (!quote || !lastParams) { setStatus('Get a quote first'); return; }
     setSwapping(true);
     clearLogs();
     try {
       const fromAddr = await serverSigner.getAddress();
-      let tx, allowanceTarget;
-      if (quote.type === 'dex') {
-        const build = await fetch('/api/dex/buildTx', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({
-            from: fromAddr,
-            sellToken: from.isNative ? 'BNB' : from.address,
-            buyToken: to.isNative ? 'BNB' : to.address,
-            amountIn: toBase(amount || '0', from.decimals),
-            quoteBuy: quote.buyAmount,
-            routerAddr: quote.router,
-            slippageBps
-          })
-        }).then(r => r.json());
-        if (build.error) { setStatus(`BuildTx error: ${build.error}`); return; }
-        allowanceTarget = build.allowanceTarget || quote.router;
-        if (!from.isNative) {
-          await ensureServerAllowance({ tokenAddr: from.address, owner: fromAddr, spender: allowanceTarget, amount: toBase(amount || '0', from.decimals), approveMax: true, serverSigner });
-        }
-        tx = { to: build.to, data: build.data, value: build.value || undefined, chainId: 56 };
-        log('DEX TX', tx);
-      } else {
-        allowanceTarget = quote.allowanceTarget || quote.allowanceTargetAddress || quote.to;
-        if (!from.isNative) {
-          await ensureServerAllowance({ tokenAddr: from.address, owner: fromAddr, spender: allowanceTarget, amount: toBase(amount || '0', from.decimals), approveMax: true, serverSigner });
-        }
-        tx = { to: quote.to, data: quote.data, value: quote.value ? ethers.toBeHex(quote.value) : undefined, chainId: 56 };
-        log('0x TX', tx);
+      const qs = new URLSearchParams({ ...lastParams, taker: fromAddr }).toString();
+      const build = await fetchJSON(`/api/dex/buildTx?${qs}`);
+      if (!build.ok) { setStatus(`BuildTx error: ${build.json?.error || build.status}`); return; }
+      const { tx, quote: q, source } = build.json;
+      const allowanceTarget = source === '0x'
+        ? (q.allowanceTarget || q.allowanceTargetAddress || tx.to)
+        : (q.router || tx.to);
+      if (!from.isNative) {
+        await ensureServerAllowance({ tokenAddr: from.address, owner: fromAddr, spender: allowanceTarget, amount: toBase(amount || '0', from.decimals), approveMax: true, serverSigner });
       }
       setStatus('Sending (server signer)...');
-      const rawTx = await serverSigner.signTransaction(tx);
+      const rawTx = await serverSigner.signTransaction({ ...tx, chainId: 56 });
       const resp = await fetch('/api/relay/sendRaw', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ rawTx }) });
       const j = await resp.json();
       if (!resp.ok || j.error) throw new Error(j.error || 'relay failed');
@@ -329,7 +274,7 @@ export default function SafeSwap({ account, serverSigner }) {
       {!networkOk && <div className="error">Switch to BNB Chain</div>}
       <button
         className="primary"
-        disabled={!quote || (quote.type==='zeroex' && !quote.to) || swapping || !networkOk}
+        disabled={!quote || swapping || !networkOk}
         aria-busy={swapping}
         onClick={swapMetaMaskPrivate}>
         {swapping ? 'Swapping…' : 'Swap (MetaMask • Private RPC)'}
@@ -337,7 +282,7 @@ export default function SafeSwap({ account, serverSigner }) {
       {serverSigner && (
         <button
           className="primary"
-          disabled={!quote || (quote.type==='zeroex' && !quote.to) || swapping || !networkOk}
+          disabled={!quote || swapping || !networkOk}
           aria-busy={swapping}
           onClick={swapServerSigner}>
           {swapping ? 'Swapping…' : 'Swap (Server Signer)'}

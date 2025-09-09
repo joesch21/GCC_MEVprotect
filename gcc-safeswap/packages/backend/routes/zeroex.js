@@ -1,62 +1,52 @@
 const express = require("express");
-const { safeProxyJson } = require("./util.js");
+const fetch = require("node-fetch");
 
 const router = express.Router();
-const BASE = "https://api.0x.org";
 
-// BNB Chain constants
-const CHAIN_BSC = 56;
-const WBNB = "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c";
-const NATIVE_SENTINEL = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
+const BASE = "https://bsc.api.0x.org/swap/v1";
 
-function authHeaders() {
+function auth() {
   const h = { accept: "application/json" };
-  if (process.env.ZEROEX_API_KEY) h["0x-api-key"] = process.env.ZEROEX_API_KEY;
+  if (process.env.ZEROX_API_KEY) h["0x-api-key"] = process.env.ZEROX_API_KEY;
   return h;
 }
 
-function normalizeToken(addrOrSymbol, chainId) {
-  if (!addrOrSymbol) return addrOrSymbol;
-  const s = String(addrOrSymbol).toLowerCase();
-  const isNative = s === "bnb" || s === NATIVE_SENTINEL;
-  if (Number(chainId) === CHAIN_BSC && isNative) return WBNB;
-  return addrOrSymbol;
-}
-
-function buildUrl(base, queryObj) {
-  const url = new URL(base);
-  Object.entries(queryObj).forEach(([k, v]) => {
-    if (v !== undefined && v !== null) url.searchParams.set(k, v);
-  });
-  return url;
-}
-
-// ----- Indicative price -----
-router.get("/price", (req, res) => {
-  const q = { ...req.query };
-  q.chainId = q.chainId || CHAIN_BSC;
-
-  // normalize native BNB ➜ WBNB
-  q.sellToken = normalizeToken(q.sellToken, q.chainId);
-  q.buyToken  = normalizeToken(q.buyToken,  q.chainId);
-
-  const url = buildUrl(`${BASE}/swap/v2/price`, q);
-  return safeProxyJson(req, res, url, authHeaders());
+router.get("/price", async (req, res) => {
+  try {
+    const url = `${BASE}/price?${new URLSearchParams(req.query)}`;
+    const r = await fetch(url, { headers: auth() });
+    const ct = r.headers.get("content-type") || "";
+    if (!ct.includes("application/json")) {
+      const text = await r.text();
+      return res
+        .status(r.status)
+        .json({ ok: false, error: "non-json", status: r.status, body: text.slice(0, 400) });
+    }
+    const j = await r.json();
+    return res.status(r.status).json(j);
+  } catch (e) {
+    console.error("0x/price error:", e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
 });
 
-// ----- Firm quote w/ calldata -----
-router.get("/quote", (req, res) => {
-  const q = { ...req.query };
-  q.chainId = q.chainId || CHAIN_BSC;
-
-  // normalize native BNB ➜ WBNB
-  q.sellToken = normalizeToken(q.sellToken, q.chainId);
-  q.buyToken  = normalizeToken(q.buyToken,  q.chainId);
-
-  console.log("0x/quote params:", q);
-
-  const url = buildUrl(`${BASE}/swap/v2/quote`, q);
-  return safeProxyJson(req, res, url, authHeaders());
+router.get("/quote", async (req, res) => {
+  try {
+    const url = `${BASE}/quote?${new URLSearchParams(req.query)}`;
+    const r = await fetch(url, { headers: auth() });
+    const ct = r.headers.get("content-type") || "";
+    if (!ct.includes("application/json")) {
+      const text = await r.text();
+      return res
+        .status(r.status)
+        .json({ ok: false, error: "non-json", status: r.status, body: text.slice(0, 400) });
+    }
+    const j = await r.json();
+    return res.status(r.status).json(j);
+  } catch (e) {
+    console.error("0x/quote error:", e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
 });
 
 module.exports = router;
