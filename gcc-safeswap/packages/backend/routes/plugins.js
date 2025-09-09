@@ -1,23 +1,31 @@
+// CJS plugin loader + health
 const express = require('express');
 const path = require('path');
 const config = require('../plugins.config.cjs');
 
 const router = express.Router();
 
-(const load = () => {
-  const enabled = config.enabled || [];
-  for (const name of enabled) {
-    if (name === 'condor-wallet' && process.env.ENABLE_EXPERIMENTAL_CONDOR_WALLET !== '1') {
-      continue;
-    }
-    try {
-      const mod = require(path.join('..', 'plugins', name));
-      router.use('/' + name, mod.default || mod);
-      console.log(`Loaded plugin: ${name}`);
-    } catch (err) {
-      console.error(`Failed to load plugin ${name}:`, err.message);
-    }
+// Track mounted plugins so the frontend can discover them
+const mounted = [];
+
+// Load each plugin listed in config.enabled
+(config.enabled || []).forEach((pluginName) => {
+  try {
+    const pluginPath = path.join(__dirname, '..', 'plugins', pluginName);
+    // Each plugin must export an express.Router instance
+    const pluginRouter = require(pluginPath);
+    router.use(`/${pluginName}`, pluginRouter);
+    mounted.push({ name: pluginName });
+    console.log(`[plugins] Mounted ${pluginName}`);
+  } catch (err) {
+    console.error(`[plugins] Failed to load ${pluginName}:`, err.message);
   }
-})();
+});
+
+// Health endpoint used by the frontend to know which plugins are active
+router.get('/_health', (_req, res) => {
+  res.json({ ok: true, plugins: mounted });
+});
 
 module.exports = router;
+

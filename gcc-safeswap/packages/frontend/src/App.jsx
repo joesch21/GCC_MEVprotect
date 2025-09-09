@@ -15,6 +15,7 @@ export default function App() {
   const [unlockOpen, setUnlockOpen] = useState(false);
   const [serverSigner, setServerSigner] = useState(null);
   const [useServer, setUseServer] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const scrollToSwap = () => {
     document
       .getElementById("swap")
@@ -81,6 +82,9 @@ export default function App() {
             <button className="btn" onClick={togglePerf} aria-pressed={perfMode}>
               {perfMode ? "Performance Mode: ON" : "Performance Mode: OFF"}
             </button>
+            <button className="btn" aria-label="Settings" onClick={() => setSettingsOpen(true)}>
+              ⚙️ Settings
+            </button>
             <Connect />
           </div>
         </div>
@@ -118,7 +122,7 @@ export default function App() {
         onDestroy={() => setServerSigner(null)}
       />
 
-      <SettingsDrawer onServerSigner={setServerSigner} onUseServer={setUseServer} />
+      <SettingsDrawer open={settingsOpen} onClose={() => setSettingsOpen(false)} />
 
       <footer className="footer">
         <div className="footer__inner container">
