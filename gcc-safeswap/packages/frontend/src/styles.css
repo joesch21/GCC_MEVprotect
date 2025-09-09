@@ -305,3 +305,12 @@ footer{ margin-top:auto; }
 
 /* Ensure brand color for the app title anywhere */
 .brand--neon span { color: var(--brand-green); }
+
+/* Mobile polish */
+@media (max-width: 480px){
+  .actions button, .btn, .btn--primary { width: 100%; }
+  .holo { margin: 16px auto; }
+  .holo .card { padding: 14px; }
+  .debug-log { display: none; }
+  .debug-toggle { display:inline-block; padding:6px 10px; border:1px solid var(--line); border-radius:8px; }
+}

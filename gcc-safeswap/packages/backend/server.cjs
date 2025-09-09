@@ -49,6 +49,7 @@ const apeswap = require('./routes/apeswap');
 const wallet = require('./routes/wallet');
 const dex = require('./routes/dex.js');
 const swap = require('./routes/swap.js');
+const priceRoutes = require('./routes/price.cjs');
 const pluginsRouter = require('./routes/plugins');
 
 app.use('/api/0x', zeroex);
@@ -57,6 +58,7 @@ app.use('/api/apeswap', apeswap);
 app.use('/api/wallet', wallet);
 app.use('/api/dex', dex);
 app.use('/api/swap', swap);
+app.use('/api', priceRoutes);
 // Plugin routes are mounted under /api/plugins
 app.use('/api/plugins', pluginsRouter);
 
