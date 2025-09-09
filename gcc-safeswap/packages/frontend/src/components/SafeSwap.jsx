@@ -52,6 +52,8 @@ export default function SafeSwap({ account, serverSigner }) {
       clearLogs();
 
       const sellAmount = toBase(amount || '0', from.decimals);
+      // UI shows BNB, but server DEX path uses WBNB for router quotes.
+      // Keep this invisible to the user; only the server maps native ↔ wrapped.
       const qsBase = {
         chainId: String(CHAIN_ID),
         sellToken: from.isNative ? 'BNB' : from.address,

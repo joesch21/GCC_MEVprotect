@@ -2,7 +2,8 @@ import React, { useEffect, useState } from "react";
 import { getBrowserProvider } from "../lib/ethers.js";
 import useBalances from "../hooks/useBalances.js";
 import TOKENS from "../lib/tokens-bsc.js";
-import { isMobile, dappDeepLink, addNetworkDeepLink } from "../lib/metamask.js";
+import { isMobile, addNetworkDeepLink } from "../lib/metamask.js";
+import { openMetaMaskDapp } from "../lib/deeplink.js";
 
 export default function Connect({ unlockedAddr }) {
   const [account, setAccount] = useState("");
@@ -40,18 +41,24 @@ export default function Connect({ unlockedAddr }) {
         if (acc?.[0]) setAccount(acc[0]);
       } catch {}
     })();
-
-    if (!window.ethereum) return;
-    const onAccounts = (accs) => setAccount(accs?.[0] || "");
-    const onChain = () => {};
-    window.ethereum.on("accountsChanged", onAccounts);
-    window.ethereum.on("chainChanged", onChain);
-    return () => {
-      try {
-        window.ethereum.removeListener("accountsChanged", onAccounts);
-        window.ethereum.removeListener("chainChanged", onChain);
-      } catch {}
-    };
+    const eth = window.ethereum;
+    if (eth?.on) {
+      const onAcc = (a) => setAccount(a?.[0] || "");
+      const onChain = () =>
+        setTimeout(async () => {
+          try {
+            const prov = getBrowserProvider();
+            const acc = await prov.send("eth_accounts", []);
+            setAccount(acc?.[0] || "");
+          } catch {}
+        }, 200);
+      eth.on("accountsChanged", onAcc);
+      eth.on("chainChanged", onChain);
+      return () => {
+        eth.removeListener("accountsChanged", onAcc);
+        eth.removeListener("chainChanged", onChain);
+      };
+    }
   }, []);
 
   useEffect(() => {
@@ -86,9 +93,9 @@ export default function Connect({ unlockedAddr }) {
       ) : (
         <>
           <button onClick={connect}>Connect MetaMask</button>
-          {isMobile() && (
+          {isMobile() && !window.ethereum && (
             <>
-              <a className="btn" href={dappDeepLink(window.location.origin)}>Open in MetaMask</a>
+              <button className="btn" onClick={() => openMetaMaskDapp(window.location.origin)}>Open in MetaMask</button>
               <a className="btn" href={addNetworkDeepLink()}>Add Private RPC</a>
             </>
           )}

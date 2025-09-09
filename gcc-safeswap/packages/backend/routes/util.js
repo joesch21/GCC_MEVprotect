@@ -1,4 +1,4 @@
-const fetch = require('node-fetch');
+const fetch = globalThis.fetch;
 
 async function safeProxyJson(req, res, url, headers = {}) {
   try {
