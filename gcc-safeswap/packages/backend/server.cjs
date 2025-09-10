@@ -21,7 +21,7 @@ app.use(express.json());
 app.use(morgan("tiny"));
 
 // Health for FE + Render checks
-app.get("/api/plugins/health", (_req, res) => {
+app.get(["/api/plugins/health", "/plugins/health", "/health"], (_req, res) => {
   res.json({ status: "ok", chain: CHAIN_NAME, ts: Date.now() });
 });
 
@@ -89,8 +89,7 @@ async function quoteVia1inch({ fromToken, toToken, amount, slippageBps }) {
   };
 }
 
-// Unified quote endpoint
-app.post("/api/quote", async (req, res) => {
+async function handleQuote(req, res) {
   try {
     const { fromToken, toToken, amount, slippageBps } = req.body || {};
 
@@ -154,7 +153,12 @@ app.post("/api/quote", async (req, res) => {
     console.error("Quote endpoint error:", err);
     res.status(502).json({ error: "Quote backend failure", details: err.message });
   }
-});
+}
+
+app.post("/api/quote", handleQuote);
+app.post("/quote", handleQuote);
+app.get("/api/quote", (_req, res) => res.status(405).send("Use POST /api/quote"));
+app.get("/quote", (_req, res) => res.status(405).send("Use POST /api/quote"));
 
 // Crash guards
 process.on("uncaughtException", (e) => console.error("❌ Uncaught", e));

@@ -1,5 +1,7 @@
-const BASE = import.meta.env.VITE_API_BASE.replace(/\/+$/, "");
-export const api = (p) => `${BASE}/${p.replace(/^\/+/, "")}`;
+import { smartJoin } from "./http";
+
+const BASE = import.meta.env.VITE_API_BASE;
+export const api = (p) => smartJoin(BASE, p);
 
 export async function apiGet(path, opts = {}) {
   const url = api(path);
@@ -26,7 +28,8 @@ export async function apiGet(path, opts = {}) {
 }
 
 export async function getQuote({ fromToken, toToken, amountWei, slippageBps }) {
-  const r = await fetch(`${BASE}/api/quote`, {
+  const url = smartJoin(BASE, "/api/quote");
+  const r = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
