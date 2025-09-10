@@ -3,11 +3,18 @@ import { ethers, BrowserProvider, Contract } from 'ethers';
 import { TOKENS, CHAIN_BSC } from '../lib/tokens';
 import { api, getQuote as fetchQuote } from '../lib/api';
 import { fromBase, toBase } from '../lib/format';
-import { logInfo, logError, clearLogs } from '../lib/logger.js';
+import { logInfo, logError, logWarn, clearLogs } from '../lib/logger.js';
 import useAllowance from '../hooks/useAllowance.js';
 import TokenSelect from './TokenSelect.jsx';
 
 let inflight;
+let quoteSeq = 0;
+
+function isPositive(x) {
+  if (x == null || x === "") return false;
+  const n = Number(x);
+  return Number.isFinite(n) && n > 0;
+}
 
 export default function SafeSwap({ account, serverSigner }) {
   const [fromSym, setFromSym] = useState('BNB');
@@ -40,7 +47,8 @@ export default function SafeSwap({ account, serverSigner }) {
     return () => window.ethereum?.removeListener('chainChanged', check);
   }, []);
 
-  async function getQuote() {
+  async function onGetQuote() {
+    const seq = ++quoteSeq;
     inflight?.abort?.();
     inflight = new AbortController();
 
@@ -49,7 +57,7 @@ export default function SafeSwap({ account, serverSigner }) {
       setQuote(null);
       setGas(null);
       clearLogs();
-      logInfo("UI: GetQuote clicked", { fromToken: fromSym, toToken: toSym, amount, slippageBps });
+      logInfo("UI: GetQuote clicked", { seq, fromToken: fromSym, toToken: toSym, amount, slippageBps });
 
       const sellAmount = toBase(amount || '0', from.decimals);
       const data = await fetchQuote({
@@ -58,13 +66,20 @@ export default function SafeSwap({ account, serverSigner }) {
         amount: sellAmount,
         slippageBps
       });
-      logInfo("UI: Quote OK", data);
+      if (seq !== quoteSeq) {
+        logWarn("UI: Stale quote ignored", { seq, latest: quoteSeq });
+        return;
+      }
+      logInfo("UI: Quote OK", { seq, data });
       setQuote(data);
       setLastParams({ sellAmount });
       setStatus('Quote ready');
+      window.refreshPortfolioValue?.();
     } catch (e) {
-      logError("UI: Quote FAILED", String(e?.message || e));
-      setStatus('Quote failed — try again.');
+      if (seq !== quoteSeq) return;
+      const msg = String(e?.message || e);
+      logError("UI: Quote FAILED", { seq, err: msg });
+      setStatus(msg === 'amount_must_be_positive' ? 'Amount must be positive.' : 'Quote failed — try again.');
       console.error(e);
     }
   }
@@ -191,6 +206,8 @@ export default function SafeSwap({ account, serverSigner }) {
   const involvesReflection = (!from.isNative && REFLECTION_SET.has(from.address.toLowerCase())) ||
                              (!to.isNative && REFLECTION_SET.has(to.address.toLowerCase()));
 
+  const canQuote = isPositive(amount) && from && to;
+
   return (
     <>
       <div>
@@ -216,7 +233,7 @@ export default function SafeSwap({ account, serverSigner }) {
         </div>
       </div>
       <div className="actions">
-        <button className="btn btn--primary" aria-busy={status.startsWith('Fetching')} onClick={getQuote}>
+        <button className="btn btn--primary" aria-busy={status.startsWith('Fetching')} disabled={!canQuote} onClick={onGetQuote}>
           {status.startsWith('Fetching') ? 'Fetching…' : 'Get Quote'}
         </button>
         {status.startsWith('Fetching') && (

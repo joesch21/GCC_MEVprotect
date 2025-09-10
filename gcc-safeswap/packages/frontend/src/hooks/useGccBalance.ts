@@ -8,6 +8,7 @@ const ERC20_ABI = [
 
 export default function useGccBalance(tokenAddress: string | undefined, account?: string | null) {
   const [balance, setBalance] = useState<number | null>(null);
+  const [raw, setRaw] = useState<bigint | null>(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<null | string>(null);
 
@@ -31,8 +32,11 @@ export default function useGccBalance(tokenAddress: string | undefined, account?
         }
 
         const erc20 = new Contract(tokenAddress, ERC20_ABI, prov);
-        const [raw, dec] = await Promise.all([erc20.balanceOf(account), erc20.decimals()]);
-        if (!cancelled) setBalance(Number(formatUnits(raw, dec)));
+        const [rawBal, dec] = await Promise.all([erc20.balanceOf(account), erc20.decimals()]);
+        if (!cancelled) {
+          setBalance(Number(formatUnits(rawBal, dec)));
+          setRaw(rawBal);
+        }
       } catch (e: any) {
         if (!cancelled) {
           console.debug("GCC balance error:", e);
@@ -69,5 +73,5 @@ export default function useGccBalance(tokenAddress: string | undefined, account?
     };
   }, [account, tokenAddress]);
 
-  return { balance, loading, err };
+  return { balance, raw, loading, err };
 }
