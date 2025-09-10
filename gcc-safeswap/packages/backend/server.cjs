@@ -62,7 +62,7 @@ console.log("🛠️ SAFE-BOOT", JSON.stringify({
 
 // Health (aliases)
 app.get(["/api/plugins/health", "/plugins/health", "/health"], (_req, res) =>
-  res.json({ status: "ok", ts: Date.now() })
+  res.json({ ok: true, relayReady: Boolean(process.env.BLXR_AUTH), pricebook: true })
 );
 
 // ---------- Helpers ----------

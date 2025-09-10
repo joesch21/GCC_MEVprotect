@@ -1,6 +1,6 @@
 import React from 'react';
 import SafeSwap from './SafeSwap.jsx';
-import { connectInjected, ensureBscMainnet, metamaskDeepLink } from '../lib/wallet';
+import { connectInjected, ensureBscMainnet, metamaskDeepLink, connectCondor } from '../lib/wallet';
 
 export default function SwapCard({ account, setAccount, onToggleLogs }) {
 
@@ -8,6 +8,16 @@ export default function SwapCard({ account, setAccount, onToggleLogs }) {
     try {
       const acc = await connectInjected();
       await ensureBscMainnet();
+      setAccount(acc);
+    } catch (e) {
+      /* no-op */
+    }
+  }
+
+  async function connectCondorWallet() {
+    try {
+      const acc = await connectCondor();
+      await ensureBscMainnet((window as any).condor || (window as any).ethereum);
       setAccount(acc);
     } catch (e) {
       /* no-op */
@@ -22,6 +32,7 @@ export default function SwapCard({ account, setAccount, onToggleLogs }) {
           <button className="btn ghost" onClick={() => window.open(metamaskDeepLink(), '_blank')}>
             Open in MetaMask App
           </button>
+          <button className="btn ghost" onClick={connectCondorWallet}>Connect Condor</button>
         </div>
       )}
 

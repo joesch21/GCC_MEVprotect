@@ -27,17 +27,33 @@ export async function connectInjected() {
   return accounts[0];
 }
 
-export async function ensureBscMainnet() {
-  const provider = new BrowserProvider(window.ethereum);
+export function condorDeepLink(url = currentDappUrl()) {
+  const noProto = url.replace(/^https?:\/\//i, "");
+  return `https://condorwallet.com/dapp/${noProto}`;
+}
+
+export async function connectCondor() {
+  const prov = (window as any).condor || (window as any).ethereum?.providers?.find?.((p: any) => p.isCondor);
+  if (!prov) {
+    window.open(condorDeepLink(), "_blank");
+    throw new Error("Condor not found — opening deep link.");
+  }
+  const accounts = await prov.request({ method: "eth_requestAccounts" });
+  return accounts[0];
+}
+
+export async function ensureBscMainnet(providerOverride?: any) {
+  const prov = providerOverride || window.ethereum;
+  const provider = new BrowserProvider(prov);
   const net = await provider.getNetwork();
   if (net.chainId !== 56n) {
     try {
-      await window.ethereum.request({
+      await prov.request({
         method: "wallet_switchEthereumChain",
         params: [{ chainId: BSC_MAINNET.chainId }],
       });
     } catch (e) {
-      await window.ethereum.request({
+      await prov.request({
         method: "wallet_addEthereumChain",
         params: [BSC_MAINNET],
       });
