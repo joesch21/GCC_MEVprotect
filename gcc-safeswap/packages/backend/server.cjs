@@ -9,11 +9,15 @@ const PORT = process.env.PORT || 3000;
 
 // ---- Tokens / routers ----
 const GCC_BEP20 = "0x092ac429b9c3450c9909433eb0662c3b7c13cf9a";
-const BNB_NATIVE = "BNB";
 const WBNB      = "0xbb4Cdb9CBd36B01bD1cBaEBF2De08d9173bc095c";
 const USDT      = "0x55d398326f99059fF775485246999027B3197955";
+const BTCB      = "0x7130d2A12B9BCbFAe4f2634d864A1Ee1Ce3Ead9c"; // BTCB on BNB Chain
 
 const PCS_V2_ROUTER = "0x10ED43C718714eb63d5aA57B78B54704E256024E";
+
+const ERC20_ABI = [
+  "function decimals() view returns (uint8)"
+];
 const PCS_V2_ABI = [
   "function getAmountsOut(uint amountIn, address[] calldata path) view returns (uint[] memory amounts)"
 ];
@@ -48,14 +52,35 @@ app.post("/api/_debug/echo", (req, res) => {
 });
 
 // ---- helpers ----
-function normalizeToken(input) {
-  const s = String(input || "").trim();
+function normalizeToken(token) {
+  const s = String(token || "").trim();
   if (!s) return null;
   if (s.toUpperCase() === "GCC") return GCC_BEP20;
-  if (s.toUpperCase() === "BNB" || s === "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE") return BNB_NATIVE;
-  return s;
+  if (s.toUpperCase() === "BNB") return WBNB; // force WBNB for router math
+  return s; // assume address
 }
-function toPCSAddr(token) { return token.toUpperCase() === "BNB" ? WBNB : token; }
+
+// Detect whether an amount is human-friendly (e.g., "1.0") vs raw units
+function looksLikeHumanAmount(str) {
+  try {
+    return /[.]/.test(str) || BigInt(str) < 100000000n;
+  } catch {
+    return true;
+  }
+}
+
+async function toRawAmount(provider, tokenAddress, amountStr) {
+  try {
+    if (!/[.]/.test(amountStr) && BigInt(amountStr) > 1000000000000n) {
+      return amountStr;
+    }
+  } catch {}
+
+  const erc20 = new ethers.Contract(tokenAddress, ERC20_ABI, provider);
+  const dec = await erc20.decimals();
+  const raw = ethers.utils.parseUnits(amountStr, dec);
+  return raw.toString();
+}
 
 // ---- 0x primary ----
 async function quoteVia0x({ fromToken, toToken, amount, slippageBps }) {
@@ -71,26 +96,41 @@ async function quoteVia0x({ fromToken, toToken, amount, slippageBps }) {
 }
 
 // ---- PancakeSwap v2 fallback ----
-async function quoteViaPCS({ fromToken, toToken, amount }) {
+async function quoteViaPCS({ fromToken, toToken, amount /* may be human or raw */ }) {
   const provider = new ethers.providers.JsonRpcProvider(process.env.BSC_RPC);
   const router   = new ethers.Contract(PCS_V2_ROUTER, PCS_V2_ABI, provider);
 
-  const sell = toPCSAddr(fromToken);
-  const buy  = toPCSAddr(toToken);
+  const sell = normalizeToken(fromToken);
+  const buy  = normalizeToken(toToken);
 
-  const paths = [
+  // Ensure amount is in raw units of the sell token
+  const amountRaw = await toRawAmount(provider, sell, String(amount));
+
+  const candidates = [
     [sell, buy],
-    [sell, USDT, buy]
+    [sell, USDT, buy],
+    [sell, BTCB, buy],
+    [sell, WBNB, buy]
   ];
 
-  for (const path of paths) {
+  for (const path of candidates) {
     try {
-      const out = await router.getAmountsOut(ethers.BigNumber.from(amount), path);
+      const out = await router.getAmountsOut(ethers.BigNumber.from(amountRaw), path);
       const buyAmount = out[out.length - 1].toString();
-      return { source: "pcs_v2", sellAmount: String(amount), buyAmount, path };
-    } catch {}
+      if (buyAmount !== "0") {
+        return {
+          source: "pcs_v2",
+          sellAmount: amountRaw,
+          buyAmount,
+          path
+        };
+      }
+    } catch (e) {
+      // continue to next path
+    }
   }
-  throw new Error("PCS no route");
+
+  throw new Error("PCS v2: no route across candidate paths or amount too small");
 }
 
 // ---- unified quote (aliases for path robustness) ----
