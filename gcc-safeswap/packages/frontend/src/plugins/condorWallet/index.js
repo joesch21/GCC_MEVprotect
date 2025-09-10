@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { API_BASE } from '../../lib/apiBase.js';
 
 export default function CondorWalletPane() {
   const [file, setFile] = useState(null);
@@ -10,7 +11,7 @@ export default function CondorWalletPane() {
     fd.append('image', file);
     setMsg('Uploading…');
     try {
-      const r = await fetch('/api/plugins/condor-wallet/upload', {
+      const r = await fetch(`${API_BASE}/api/plugins/condor-wallet/upload`, {
         method: 'POST',
         body: fd,
       });
@@ -41,4 +42,3 @@ export default function CondorWalletPane() {
     </div>
   );
 }
-

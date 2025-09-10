@@ -6,6 +6,7 @@ import { log, clearLogs } from '../lib/logger.js';
 import Toasts from './Toasts.jsx';
 import useAllowance from '../hooks/useAllowance.js';
 import { fetchJSON } from '../lib/net.js';
+import { API_BASE } from '../lib/apiBase.js';
 
 let inflight;
 
@@ -70,7 +71,7 @@ export default function SafeSwap({ account, serverSigner }) {
         buyToken: to.isNative ? ZEROX_NATIVE : to.address
       }).toString();
 
-      const r0x = await fetchJSON(`/api/0x/quote?${q0x}`, { timeoutMs: 6500, signal: inflight.signal });
+      const r0x = await fetchJSON(`${API_BASE}/api/0x/quote?${q0x}`, { timeoutMs: 6500, signal: inflight.signal });
       if (r0x.ok && r0x.json?.to && r0x.json?.data) {
         setQuote({ type: 'zeroex', ...r0x.json });
         setLastParams(qsBase);
@@ -81,7 +82,7 @@ export default function SafeSwap({ account, serverSigner }) {
       addToast('0x quote unavailable; using DEX route');
 
       const qDex = new URLSearchParams(qsBase).toString();
-      const rDex = await fetchJSON(`/api/dex/quote?${qDex}`, { timeoutMs: 6500, signal: inflight.signal });
+      const rDex = await fetchJSON(`${API_BASE}/api/dex/quote?${qDex}`, { timeoutMs: 6500, signal: inflight.signal });
       if (!rDex.ok) {
         const err = rDex.json?.error || `HTTP ${rDex.status}`;
         setStatus(`Quote error: ${err}`);
@@ -129,7 +130,7 @@ export default function SafeSwap({ account, serverSigner }) {
       const fromAddr = await signer.getAddress();
 
       const qs = new URLSearchParams({ ...lastParams, taker: fromAddr }).toString();
-      const build = await fetchJSON(`/api/dex/buildTx?${qs}`);
+      const build = await fetchJSON(`${API_BASE}/api/dex/buildTx?${qs}`);
       if (!build.ok) { setStatus(`BuildTx error: ${build.json?.error || build.status}`); return; }
       const { tx, quote: q, source } = build.json;
       const allowanceTarget = source === '0x'
@@ -161,7 +162,7 @@ export default function SafeSwap({ account, serverSigner }) {
     try {
       const fromAddr = await serverSigner.getAddress();
       const qs = new URLSearchParams({ ...lastParams, taker: fromAddr }).toString();
-      const build = await fetchJSON(`/api/dex/buildTx?${qs}`);
+      const build = await fetchJSON(`${API_BASE}/api/dex/buildTx?${qs}`);
       if (!build.ok) { setStatus(`BuildTx error: ${build.json?.error || build.status}`); return; }
       const { tx, quote: q, source } = build.json;
       const allowanceTarget = source === '0x'
@@ -172,7 +173,7 @@ export default function SafeSwap({ account, serverSigner }) {
       }
       setStatus('Sending (server signer)...');
       const rawTx = await serverSigner.signTransaction({ ...tx, chainId: 56 });
-      const resp = await fetch('/api/relay/sendRaw', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ rawTx }) });
+      const resp = await fetch(`${API_BASE}/api/relay/sendRaw`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ rawTx }) });
       const j = await resp.json();
       if (!resp.ok || j.error) throw new Error(j.error || 'relay failed');
       setStatus(`Broadcasted: ${j.txHash || 'sent'}`);

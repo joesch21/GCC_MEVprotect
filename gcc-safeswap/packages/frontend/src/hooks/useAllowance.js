@@ -1,5 +1,6 @@
 import { BrowserProvider, Contract, ethers, Interface } from "ethers";
 import { getRpcProvider } from "../lib/ethers";
+import { API_BASE } from "../lib/apiBase.js";
 
 export default function useAllowance() {
   async function ensure({ tokenAddr, owner, spender, amount, approveMax, serverSigner }) {
@@ -14,7 +15,7 @@ export default function useAllowance() {
       const data = iface.encodeFunctionData("approve", [spender, value]);
       const tx = { to: tokenAddr, data, value: 0, chainId: 56 };
       const rawTx = await serverSigner.signTransaction(tx);
-      const resp = await fetch('/api/relay/sendRaw', { method: 'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({ rawTx }) });
+      const resp = await fetch(`${API_BASE}/api/relay/sendRaw`, { method: 'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({ rawTx }) });
       const j = await resp.json();
       if (!resp.ok || j.error) throw new Error(j.error || 'relay failed');
       return true;

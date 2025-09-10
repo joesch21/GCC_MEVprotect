@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 
 export default function LogTail() {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
   const [lines, setLines] = useState([]);
   const boxRef = useRef(null);
 
@@ -42,8 +42,7 @@ export default function LogTail() {
         {open ? 'Hide Logs' : 'Show Logs'}
       </button>
 
-      {open && (
-        <div className="debug-log card">
+      <div className="debug-log card" style={{ display: open ? 'block' : 'none' }}>
           <div className="debug-log__header">
             <span>Debug Log</span>
             <div className="actions">
@@ -55,7 +54,6 @@ export default function LogTail() {
             {lines.join('\n')}
           </pre>
         </div>
-      )}
     </div>
   );
 }
