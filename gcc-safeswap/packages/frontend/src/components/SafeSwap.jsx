@@ -6,6 +6,7 @@ import { fromBase, toBase } from '../lib/format';
 import { logInfo, logError, logWarn, clearLogs } from '../lib/logger.js';
 import TokenSelect from './TokenSelect.jsx';
 import { detectCaps } from '../lib/walletCaps';
+import { getCondorProvider } from '../lib/wallet';
 
 let inflight;
 let quoteSeq = 0;
@@ -46,7 +47,7 @@ async function sendWithPrivacy({ tx, account, usePrivateRelay, rpcIsPrivate }) {
     return { hash, via: rpcIsPrivate ? "private_rpc" : "public" };
   }
 
-  const condor = (window as any).condor || window.ethereum;
+  const condor = getCondorProvider() || window.ethereum;
   const provider = new BrowserProvider(condor, 'any');
   const chainId = (await provider.getNetwork()).chainId;
   const nonce = await provider.getTransactionCount(account, "latest");
