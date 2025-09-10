@@ -1,9 +1,11 @@
 {
   "name": "gcc-safeswap-backend",
   "version": "0.1.0",
+  "private": true,
   "type": "commonjs",
   "main": "server.cjs",
   "scripts": {
+    "start": "node server.cjs",
     "dev": "node server.cjs"
   },
   "dependencies": {
