@@ -1,27 +1,22 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import Portfolio from "./components/Portfolio.jsx";
-import SafeSwap from './components/SafeSwap.jsx';
+import React, { useState, useEffect } from 'react';
+import AppHeader from './components/AppHeader.jsx';
+import TopBar from './components/TopBar.jsx';
+import SwapCard from './components/SwapCard.jsx';
+import DebugDrawer from './components/DebugDrawer.jsx';
 import WalletUnlockModal from './components/WalletUnlockModal.jsx';
+import SettingsDrawer from './components/SettingsDrawer.jsx';
 import useShieldStatus from './hooks/useShieldStatus.js';
 import { ServerSigner } from './lib/serverSigner.js';
 import { getBrowserProvider } from './lib/ethers.js';
-import DebugLogPanel from "./components/DebugLogPanel.jsx";
-import SettingsDrawer from './components/SettingsDrawer.jsx';
-import PerformanceMode from './components/PerformanceMode.jsx';
 
 export default function App() {
-  const [perfMode, setPerfMode] = useState(() => localStorage.getItem("perfMode") === "1");
   const [account, setAccount] = useState(null);
-  const { shieldOn, refreshShield } = useShieldStatus();
+  const { refreshShield } = useShieldStatus();
   const [unlockOpen, setUnlockOpen] = useState(false);
   const [serverSigner, setServerSigner] = useState(null);
   const [useServer, setUseServer] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const scrollToSwap = () => {
-    document
-      .getElementById("swap")
-      ?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }; 
+  const [logsOpen, setLogsOpen] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -42,81 +37,30 @@ export default function App() {
     };
   }, [refreshShield]);
 
-  // Respect OS "Reduce Motion" on first visit
-  useEffect(() => {
-    const prefersReduced = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
-    if (prefersReduced && localStorage.getItem("perfMode") == null) {
-      setPerfMode(true);
-      localStorage.setItem("perfMode", "1");
-    }
-  }, []);
-
-  // Toggle body class for CSS switches
-  useEffect(() => {
-    document.documentElement.classList.toggle("perf-mode", !!perfMode);
-    if (perfMode) localStorage.setItem("perfMode", "1");
-    else localStorage.removeItem("perfMode");
-  }, [perfMode]);
-
-  const togglePerf = useCallback(() => setPerfMode(v => !v), []);
-
-  useEffect(() => {
-    if (window.location.pathname === "/swap") {
-      const el = document.getElementById("swap");
-      el?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
-  }, []);
-
   const activeAccount = useServer && serverSigner ? serverSigner._address : account;
-  const signer = useServer && serverSigner ? serverSigner : null;
 
   return (
     <>
-      <div className="bg-overlay"><div className="bg-matrix" /></div>
-
-      <header className="nav">
-        <div className="nav__inner container">
-          <a href="/" className="brand brand--neon" aria-label="GCC SafeSwap Home">
-            <span>GCC SafeSwap</span>
-          </a>
-          <nav className="nav__links" aria-label="Primary">
-            <a href="/dashboard">Dashboard</a>
-            <a href="/stake">Stake</a>
-            <a href="/swap" className="pill pill--accent">Swap</a>
-          </nav>
-          <div className="nav__right">
-              {false && <PerformanceMode perfMode={perfMode} toggle={togglePerf} />}
-            <Portfolio account={activeAccount} />
-            <button className="btn" aria-label="Settings" onClick={() => setSettingsOpen(true)}>
-              ⚙️ Settings
-            </button>
-          </div>
-        </div>
-      </header>
-
-      <section className="hero container">
-        <div className="hero__copy">
-          <h1><span className="glow">SafeSwap</span> for Condorians</h1>
-          <p className="lead">Private, MEV-protected swaps.</p>
-          <div className="cta">
-            <button className="btn btn--primary" onClick={scrollToSwap}>Start Swapping</button>
-          </div>
-        </div>
-        {/* <div className="hero__visual">
-          <div className="holo">
-            <img src="/assets/no_mask.png" alt="Condor" className="condor-visual" />
-          </div>
-        </div> */}
-      </section>
-
-      <main>
-        <section id="swap" className="holo">
-          <div className="card">
-            <SafeSwap account={activeAccount} />
-          </div>
-        </section>
-      </main>
-      <DebugLogPanel />
+      <div className="shell">
+        <AppHeader
+          openSettings={() => setSettingsOpen(true)}
+          toggleLogs={() => setLogsOpen(v => !v)}
+          account={activeAccount}
+        />
+        <TopBar />
+        <main className="main">
+          <section className="left">
+            <SwapCard
+              account={activeAccount}
+              onOpenSettings={() => setSettingsOpen(true)}
+              onToggleLogs={() => setLogsOpen(v => !v)}
+            />
+          </section>
+          <aside className="right">
+            <DebugDrawer open={logsOpen} toggleLogs={() => setLogsOpen(false)} />
+          </aside>
+        </main>
+      </div>
 
       <WalletUnlockModal
         open={unlockOpen}
@@ -127,17 +71,6 @@ export default function App() {
       />
 
       <SettingsDrawer open={settingsOpen} onClose={() => setSettingsOpen(false)} />
-
-      <footer className="footer">
-        <div className="footer__inner container">
-          <span>© {new Date().getFullYear()} Condor Capital — Making Volatility Great Again</span>
-          <nav>
-            <a href="/terms">Terms</a>
-            <a href="/privacy">Privacy</a>
-          </nav>
-        </div>
-      </footer>
-
     </>
   );
 }
