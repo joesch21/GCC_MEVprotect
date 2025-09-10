@@ -1,0 +1,11 @@
+{
+  "projectId": "",
+  "orgId": "",
+  "settings": {
+    "framework": "vite",
+    "buildCommand": "yarn build",
+    "outputDirectory": "dist",
+    "installCommand": "yarn install --frozen-lockfile",
+    "rootDirectory": "packages/frontend"
+  }
+}
