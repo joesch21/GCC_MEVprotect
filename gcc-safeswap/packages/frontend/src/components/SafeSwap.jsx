@@ -6,7 +6,7 @@ import { fromBase, toBase } from '../lib/format';
 import { logInfo, logError, logWarn, clearLogs } from '../lib/logger.js';
 import TokenSelect from './TokenSelect.jsx';
 import { getCondorProvider } from '../lib/wallet';
-import { isCondorProvider } from '../lib/walletDetect';
+import { isCondorEnv } from '../lib/walletDetect';
 
 let inflight;
 let quoteSeq = 0;
@@ -114,11 +114,11 @@ export default function SafeSwap({ account }) {
       } catch {
         setNetworkOk(false);
       }
-      setIsCondor(isCondorProvider(window.ethereum));
+      setIsCondor(isCondorEnv());
     }
     init();
     const onChainChanged = () => {
-      setIsCondor(isCondorProvider(window.ethereum));
+      setIsCondor(isCondorEnv());
     };
     window.ethereum?.on('chainChanged', onChainChanged);
     return () => window.ethereum?.removeListener('chainChanged', onChainChanged);
