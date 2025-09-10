@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { getBrowserProvider } from "../lib/ethers.js";
 import useBalances from "../hooks/useBalances.js";
-import TOKENS from "../lib/tokens-bsc.js";
+import { TOKENS } from "../lib/tokens";
 import { isMobile, addNetworkDeepLink, dappDeepLink } from "../lib/metamask.js";
 import useGccUsd from "../hooks/useGccUsd.js";
 
@@ -66,7 +66,7 @@ export default function Connect({ unlockedAddr }) {
     let t;
     async function refresh() {
       if (!activeAddress) return;
-      const map = { GCC: TOKENS.GCC.address, WBNB: TOKENS.WBNB.address, USDT: TOKENS.USDT.address };
+      const map = { GCC: TOKENS.GCC.address };
       const b = await fetchBNBAndTokens(activeAddress, map);
       setBal(b);
     }
@@ -90,8 +90,6 @@ export default function Connect({ unlockedAddr }) {
                 {gcc != null && <div>GCC {gcc.toFixed(2)}</div>}
                 {price != null && <div>Price ${price.toFixed(4)} {source ? `(${source})` : ''}</div>}
                 {usd != null && <div>Total ${usd.toFixed(2)}</div>}
-                <div>WBNB {Number(bal?.WBNB?.amount || 0).toFixed(4)}</div>
-                <div>USDT {Number(bal?.USDT?.amount || 0).toFixed(2)}</div>
               </div>
             </details>
         </>

@@ -1,33 +1,32 @@
 import React, { useState, useEffect } from 'react';
 import { ethers, BrowserProvider, Contract } from 'ethers';
-import TOKENS from '../lib/tokens-bsc.js';
+import { TOKENS, uiToQuoteAddress, CHAIN_BSC } from '../lib/tokens';
+import { apiGet, apiGetRetry } from '../lib/api';
 import { fromBase, toBase } from '../lib/format';
 import { log, clearLogs } from '../lib/logger.js';
-import Toasts from './Toasts.jsx';
 import useAllowance from '../hooks/useAllowance.js';
-import { fetchJSON } from '../lib/net.js';
 import { API_BASE } from '../lib/apiBase.js';
+import TokenSelect from './TokenSelect.jsx';
 
 let inflight;
 
 export default function SafeSwap({ account, serverSigner }) {
-  const tokenList = Object.values(TOKENS);
-  const [from, setFrom] = useState(TOKENS.BNB);
-  const [to, setTo] = useState(TOKENS.GCC);
+  const [fromSym, setFromSym] = useState('BNB');
+  const [toSym, setToSym] = useState('GCC');
+  const from = TOKENS[fromSym];
+  const to = TOKENS[toSym];
   const [amount, setAmount] = useState('');
   const [quote, setQuote] = useState(null);
   const [status, setStatus] = useState('');
   // slippage in basis points (default 2%)
   const [slippageBps, setSlip] = useState(200);
-  const [toasts, setToasts] = useState([]);
   const [swapping, setSwapping] = useState(false);
   const [gas, setGas] = useState(null);
   const [networkOk, setNetworkOk] = useState(true);
   const [lastParams, setLastParams] = useState(null);
   const { ensure: ensureServerAllowance } = useAllowance();
 
-  const addToast = (msg, type='') => setToasts(t => [...t, { msg, type }]);
-  const CHAIN_ID = 56;
+  const CHAIN_ID = CHAIN_BSC;
   const REFLECTION_SET = new Set(['0x092ac429b9c3450c9909433eb0662c3b7c13cf9a']);
 
   useEffect(() => {
@@ -53,44 +52,26 @@ export default function SafeSwap({ account, serverSigner }) {
       clearLogs();
 
       const sellAmount = toBase(amount || '0', from.decimals);
-      // UI shows BNB, but server DEX path uses WBNB for router quotes.
-      // Keep this invisible to the user; only the server maps native ↔ wrapped.
-      const qsBase = {
+      const qs = new URLSearchParams({
         chainId: String(CHAIN_ID),
-        sellToken: from.isNative ? 'BNB' : from.address,
-        buyToken: to.isNative ? 'BNB' : to.address,
+        sellToken: uiToQuoteAddress(fromSym),
+        buyToken: uiToQuoteAddress(toSym),
         sellAmount,
         taker: account,
         slippageBps: String(slippageBps)
-      };
-
-      const ZEROX_NATIVE = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE';
-      const q0x = new URLSearchParams({
-        ...qsBase,
-        sellToken: from.isNative ? ZEROX_NATIVE : from.address,
-        buyToken: to.isNative ? ZEROX_NATIVE : to.address
       }).toString();
 
-      const r0x = await fetchJSON(`${API_BASE}/api/0x/quote?${q0x}`, { timeoutMs: 6500, signal: inflight.signal });
-      if (r0x.ok && r0x.json?.to && r0x.json?.data) {
-        setQuote({ type: 'zeroex', ...r0x.json });
-        setLastParams(qsBase);
-        setStatus('Quote ready (0x)');
-        return;
-      }
-
-      addToast('0x quote unavailable; using DEX route');
-
-      const qDex = new URLSearchParams(qsBase).toString();
-      const rDex = await fetchJSON(`${API_BASE}/api/dex/quote?${qDex}`, { timeoutMs: 6500, signal: inflight.signal });
-      if (!rDex.ok) {
-        const err = rDex.json?.error || `HTTP ${rDex.status}`;
-        setStatus(`Quote error: ${err}`);
-        return;
-      }
-      setQuote({ type: 'dex', ...rDex.json });
-      setLastParams(qsBase);
-      setStatus('Quote ready (DEX)');
+      const rDex = await apiGetRetry(`/api/dex/quote?${qs}`, 2);
+      setQuote({ type: 'dex', ...rDex });
+      setLastParams({
+        chainId: String(CHAIN_ID),
+        sellToken: uiToQuoteAddress(fromSym),
+        buyToken: uiToQuoteAddress(toSym),
+        sellAmount,
+        taker: account,
+        slippageBps: String(slippageBps)
+      });
+      setStatus('Quote ready');
     } catch (e) {
       setStatus(`Quote failed: ${e.message || String(e)}`);
     }
@@ -130,9 +111,8 @@ export default function SafeSwap({ account, serverSigner }) {
       const fromAddr = await signer.getAddress();
 
       const qs = new URLSearchParams({ ...lastParams, taker: fromAddr }).toString();
-      const build = await fetchJSON(`${API_BASE}/api/dex/buildTx?${qs}`);
-      if (!build.ok) { setStatus(`BuildTx error: ${build.json?.error || build.status}`); return; }
-      const { tx, quote: q, source } = build.json;
+      const build = await apiGet(`/api/dex/buildTx?${qs}`);
+      const { tx, quote: q, source } = build;
       const allowanceTarget = source === '0x'
         ? (q.allowanceTarget || q.allowanceTargetAddress || tx.to)
         : (q.router || tx.to);
@@ -162,9 +142,8 @@ export default function SafeSwap({ account, serverSigner }) {
     try {
       const fromAddr = await serverSigner.getAddress();
       const qs = new URLSearchParams({ ...lastParams, taker: fromAddr }).toString();
-      const build = await fetchJSON(`${API_BASE}/api/dex/buildTx?${qs}`);
-      if (!build.ok) { setStatus(`BuildTx error: ${build.json?.error || build.status}`); return; }
-      const { tx, quote: q, source } = build.json;
+      const build = await apiGet(`/api/dex/buildTx?${qs}`);
+      const { tx, quote: q, source } = build;
       const allowanceTarget = source === '0x'
         ? (q.allowanceTarget || q.allowanceTargetAddress || tx.to)
         : (q.router || tx.to);
@@ -214,15 +193,11 @@ export default function SafeSwap({ account, serverSigner }) {
     <>
       <div>
         From:
-        <select value={from.address} onChange={e => setFrom(tokenList.find(t => t.address === e.target.value))}>
-          {tokenList.map(t => <option key={t.address} value={t.address}>{t.symbol}</option>)}
-        </select>
+        <TokenSelect value={fromSym} onChange={setFromSym} />
       </div>
       <div>
         To:
-        <select value={to.address} onChange={e => setTo(tokenList.find(t => t.address === e.target.value))}>
-          {tokenList.map(t => <option key={t.address} value={t.address}>{t.symbol}</option>)}
-        </select>
+        <TokenSelect value={toSym} onChange={setToSym} />
       </div>
       <div className="row">
         <label>Amount:</label>
@@ -291,7 +266,6 @@ export default function SafeSwap({ account, serverSigner }) {
           {swapping ? 'Swapping…' : 'Swap (Server Signer)'}
         </button>
       )}
-      <Toasts items={toasts} />
     </>
   );
 }

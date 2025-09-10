@@ -47,7 +47,7 @@ All secrets such as aggregator API keys, custom private RPC URLs and address ove
 
 ## Adding Tokens
 
-The token list includes BNB, WBNB, GCC, USDT and BTCB.  To add more tokens or icons edit `src/lib/tokens-bsc.js` in the frontend package.
+The token list includes BNB and GCC. To add more tokens or icons edit `src/lib/tokens.ts` in the frontend package.
 
 ## Private RPC Switching
 
