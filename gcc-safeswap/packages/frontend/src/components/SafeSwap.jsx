@@ -7,6 +7,8 @@ import { logInfo, logError, logWarn, clearLogs } from '../lib/logger.js';
 import TokenSelect from './TokenSelect.jsx';
 import { detectCaps } from '../lib/walletCaps';
 import { getCondorProvider } from '../lib/wallet';
+import { isPrivate } from '../lib/privateRpc';
+import { EnablePrivateRpc } from './EnablePrivateRpc.tsx';
 
 let inflight;
 let quoteSeq = 0;
@@ -96,6 +98,7 @@ export default function SafeSwap({ account }) {
   const [lastParams, setLastParams] = useState(null);
   const [rpcLabel, setRpcLabel] = useState('');
   const [rpcUrl, setRpcUrl] = useState('');
+  const [rpcIsPrivate, setRpcIsPrivate] = useState(isPrivate());
   const [usePrivateRelay, setUsePrivateRelay] = useState(false);
   const [relayReady, setRelayReady] = useState(false);
   const [{ isMetaMask, isCondor }, setCaps] = useState({ isMetaMask: false, isCondor: false });
@@ -123,6 +126,7 @@ export default function SafeSwap({ account }) {
       setRpcLabel(lbl);
       setRpcUrl(url);
       setCaps(detectCaps(window.ethereum, window));
+      setRpcIsPrivate(isPrivate());
     }
     init();
     const onChainChanged = () => {
@@ -132,11 +136,11 @@ export default function SafeSwap({ account }) {
       setRpcLabel(lbl);
       setRpcUrl(url);
       setCaps(detectCaps(window.ethereum, window));
+      setRpcIsPrivate(isPrivate());
     };
     window.ethereum?.on('chainChanged', onChainChanged);
     return () => window.ethereum?.removeListener('chainChanged', onChainChanged);
   }, []);
-  const rpcIsPrivate = /\b(private|mev|flash|blxr)\b/i.test(rpcLabel || rpcUrl || '');
   const canUseRelay = relayReady && isCondor;
   const useRelay = usePrivateRelay && canUseRelay;
 
@@ -311,32 +315,23 @@ export default function SafeSwap({ account }) {
       )}
       {!networkOk && <div className="error">Switch to BNB Chain</div>}
       <div className="row" style={{marginTop:8}}>
-        {rpcIsPrivate ? (
-          <div className="badge success">Private RPC: ON</div>
+        {isMetaMask ? (
+          <>
+            {!rpcIsPrivate && <div className="badge">Public RPC</div>}
+            <EnablePrivateRpc isCondor={isCondor} isMetaMask={isMetaMask} onEnabled={() => setRpcIsPrivate(true)} />
+          </>
         ) : canUseRelay ? (
           <label style={{display:'flex',alignItems:'center',gap:6}}>
             <input type="checkbox" checked={usePrivateRelay} onChange={e=>setUsePrivateRelay(e.target.checked)} />
             <span>Send privately (MEV-protected) — via Condor Relay</span>
           </label>
         ) : (
-          <>
-            <div className="badge">Public RPC</div>
-            {isMetaMask && (
-              <small style={{opacity:.8, marginLeft:8}}>
-                MetaMask users: use Settings → “Add Private RPC” for MEV protection.
-              </small>
-            )}
-          </>
+          <div className="badge">Public RPC</div>
         )}
       </div>
       {isCondor && canUseRelay && (
         <div className="muted" style={{marginTop:4}}>
           Condor Advantage: Transactions are submitted privately via relay to avoid public mempool exposure.
-        </div>
-      )}
-      {isMetaMask && !rpcIsPrivate && (
-        <div className="muted" style={{marginTop:4}}>
-          Tip: Add a Private RPC in Settings to route your swaps privately.
         </div>
       )}
       <button

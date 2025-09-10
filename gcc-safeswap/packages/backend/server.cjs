@@ -65,6 +65,9 @@ app.get(["/api/plugins/health", "/plugins/health", "/health"], (_req, res) =>
   res.json({ ok: true, relayReady: Boolean(process.env.BLXR_AUTH), pricebook: true })
 );
 
+// Private RPC chain parameters
+app.use("/api/private-rpc", require("./routes/privateRpc"));
+
 // ---------- Helpers ----------
 const _decimalsCache = new Map();
 async function getDecimals(provider, addr) {
