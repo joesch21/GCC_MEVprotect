@@ -37,21 +37,17 @@ export default function App() {
     };
   }, [refreshShield]);
 
-  const activeAccount = useServer && serverSigner ? serverSigner._address : account;
-
   return (
     <>
       <div className="shell">
         <AppHeader
           openSettings={() => setSettingsOpen(true)}
           toggleLogs={() => setLogsOpen(v => !v)}
-          account={activeAccount}
         />
         <TopBar />
         <main className="main">
           <section className="left">
             <SwapCard
-              account={activeAccount}
               onOpenSettings={() => setSettingsOpen(true)}
               onToggleLogs={() => setLogsOpen(v => !v)}
             />
