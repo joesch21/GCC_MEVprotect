@@ -1,6 +1,23 @@
-import React from 'react';
+import React, { useState } from 'react';
+import { connectInjected, ensureBscMainnet, metamaskDeepLink } from '../lib/wallet';
 
-export default function AppHeader({ openSettings, toggleLogs, account }) {
+export default function AppHeader({ openSettings, toggleLogs }) {
+  const [account, setAccount] = useState(null);
+
+  async function onConnectBrowser() {
+    try {
+      const acc = await connectInjected();
+      await ensureBscMainnet();
+      setAccount(acc);
+    } catch (e) {
+      console.info(String(e));
+    }
+  }
+
+  const onConnectMobile = () => {
+    window.open(metamaskDeepLink(), '_blank');
+  };
+
   return (
     <header className="header">
       <div className="brand">
@@ -16,18 +33,20 @@ export default function AppHeader({ openSettings, toggleLogs, account }) {
           <i className="icon-terminal" /> Show Logs
         </button>
         <div className="divider" />
-        <NetworkBadge />
-        <WalletChip account={account} />
+        {!account ? (
+          <div className="connect-row">
+            <button className="btn" onClick={onConnectBrowser}>Connect MetaMask</button>
+            <button className="btn ghost" onClick={onConnectMobile}>Open in MetaMask App</button>
+          </div>
+        ) : (
+          <WalletChip address={account} />
+        )}
       </div>
     </header>
   );
 }
 
-function NetworkBadge() {
-  return <div className="pill">BNB • Private RPC</div>;
-}
-
-function WalletChip({ account }) {
-  const display = account ? `${account.slice(0, 6)}…${account.slice(-4)}` : 'Connect';
+function WalletChip({ address }) {
+  const display = `${address.slice(0, 6)}…${address.slice(-4)}`;
   return <div className="pill">{display}</div>;
 }

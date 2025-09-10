@@ -25,6 +25,10 @@ body{background:var(--bg); color:var(--text); font:14px/1.4 system-ui,Segoe UI,I
 
 .header-actions{margin-left:auto; display:flex; align-items:center; gap:10px}
 .header-actions .divider{width:1px; height:24px; background:var(--line); margin:0 6px}
+.header-actions .connect-row{display:flex; gap:8px; align-items:center}
+@media (max-width:980px){
+  .header-actions .connect-row{flex-wrap:wrap}
+}
 
 .topbar{
   display:flex; gap:10px; align-items:center;
