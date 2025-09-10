@@ -12,8 +12,10 @@ export default function useGccUsd(account){
     let off = false;
     (async () => {
       try {
-        const priceResp = await fetch(api('price/gcc')).then(r=>r.json());
-        const price = Number(priceResp?.usd ?? priceResp?.priceUsd ?? 0);
+        const r = await fetch(api('price/gcc'));
+        if (!r.ok) throw new Error(`Quote failed: ${r.status}`);
+        const priceResp = await r.json();
+        const price = Number(priceResp?.usd ?? priceResp?.priceUsd ?? priceResp?.price ?? 0);
         let gccBal = 0;
         if (account) {
           const prov = getBrowserProvider();
