@@ -1,4 +1,4 @@
-import { API_BASE } from './apiBase.js';
+import { api } from './api';
 
 export class ServerSigner {
   constructor(sessionId, address) {
@@ -11,7 +11,7 @@ export class ServerSigner {
   }
 
   async signTransaction(tx) {
-    const resp = await fetch(`${API_BASE}/api/wallet/signTransaction`, {
+    const resp = await fetch(api('wallet/signTransaction'), {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ sessionId: this.sessionId, tx })
@@ -22,7 +22,7 @@ export class ServerSigner {
   }
 
   async signTypedData(domain, types, message) {
-    const resp = await fetch(`${API_BASE}/api/wallet/signTypedData`, {
+    const resp = await fetch(api('wallet/signTypedData'), {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ sessionId: this.sessionId, domain, types, message })

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { PLUGIN_META } from './meta.js';
-import { API_BASE } from '../lib/apiBase.js';
+import { api } from '../lib/api';
 
 // Fetch the backend plugin health endpoint and merge with static metadata
 export default function usePlugins() {
@@ -10,7 +10,7 @@ export default function usePlugins() {
     let alive = true;
     (async () => {
       try {
-        const r = await fetch(`${API_BASE}/api/plugins/_health`);
+        const r = await fetch(api('plugins/health'));
         const j = await r.json();
         if (!alive) return;
         const pluginList = (j.plugins || []).filter(

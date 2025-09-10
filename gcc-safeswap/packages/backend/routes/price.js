@@ -43,7 +43,7 @@ async function getFreshPrice() {
   throw new Error('all price sources failed');
 }
 
-router.get('/price/gcc', async (req, res) => {
+router.get('/gcc', async (req, res) => {
   try {
     const now = Date.now();
     const force = req.query.refresh === '1';

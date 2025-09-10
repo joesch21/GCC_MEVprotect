@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import DropZone from './DropZone.jsx';
 import Fingerprint from './Fingerprint.jsx';
-import { API_BASE } from '../lib/apiBase.js';
+import { api } from '../lib/api';
 
 export default function WalletDrawer({ open, onClose }) {
   const [wallet, setWallet] = useState(null);
@@ -19,7 +19,7 @@ export default function WalletDrawer({ open, onClose }) {
 
   const generate = async () => {
     setMessage('');
-    const resp = await fetch(`${API_BASE}/api/wallet/generate`, { method: 'POST' });
+    const resp = await fetch(api('wallet/generate'), { method: 'POST' });
     const data = await resp.json();
     if (resp.ok) setWallet(data);
     else setMessage(data.error || 'error');
@@ -34,7 +34,7 @@ export default function WalletDrawer({ open, onClose }) {
     form.append('handle', wallet.handle);
     form.append('passphrase', pass);
     form.append('image', file);
-    const resp = await fetch(`${API_BASE}/api/wallet/embed`, { method: 'POST', body: form });
+    const resp = await fetch(api('wallet/embed'), { method: 'POST', body: form });
     if (!resp.ok) {
       const err = await resp.json();
       setMessage(err.error || 'error');
@@ -58,7 +58,7 @@ export default function WalletDrawer({ open, onClose }) {
     const form = new FormData();
     form.append('passphrase', dpass);
     form.append('image', dfile);
-    const resp = await fetch(`${API_BASE}/api/wallet/decode`, { method: 'POST', body: form });
+    const resp = await fetch(api('wallet/decode'), { method: 'POST', body: form });
     const data = await resp.json();
     if (resp.ok) { setDecode(data); setDmsg(''); }
     else setDmsg(data.error || 'error');
