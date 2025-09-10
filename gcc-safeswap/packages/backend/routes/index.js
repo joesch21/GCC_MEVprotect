@@ -2,7 +2,7 @@ const { txGuard } = require('../middleware/txGuard');
 const { mevGuard } = require('../middleware/mevGuard');
 
 module.exports = (app, env) => {
-  require('./0x')(app, env);
+  app.use('/api/0x', require('./0x'));
   require('./plugins')(app, env);
 
   app.use('/api/relay', require('./relay'));

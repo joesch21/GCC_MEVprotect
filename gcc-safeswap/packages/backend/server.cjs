@@ -4,14 +4,22 @@ const express = require('express');
 let helmetMiddleware = () => (req,res,next)=>next();
 try { helmetMiddleware = require('helmet'); } catch {}
 const rateLimit = require('express-rate-limit');
-const { originGuard } = require('./middleware/originGuard');
+const cors = require('cors');
 const { refreshRegistry } = require('./mev/registry');
 
 const app = express();
 app.use(express.json({ limit: '1mb' }));
 app.use(helmetMiddleware());
 app.use(rateLimit({ windowMs: 60_000, max: 60, standardHeaders: true }));
-app.use(originGuard);
+const ALLOWED = (process.env.ALLOWED_ORIGINS || '')
+  .split(',').map(s => s.trim()).filter(Boolean);
+app.use(cors({
+  origin(origin, cb){
+    if (!origin || ALLOWED.includes(origin)) return cb(null, true);
+    cb(new Error('CORS: origin not allowed'));
+  },
+  credentials: true
+}));
 app.use((_,res,next)=>{ res.setHeader('x-robots-tag','noindex'); next(); });
 
 console.log('[env] loaded:', summarize());

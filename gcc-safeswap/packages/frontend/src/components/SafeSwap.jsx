@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ethers, BrowserProvider, Contract } from 'ethers';
 import { TOKENS, uiToQuoteAddress, CHAIN_BSC } from '../lib/tokens';
-import { apiGet, apiGetRetry } from '../lib/api';
+import { apiGet, oxQuote, dexQuote } from '../lib/api';
 import { fromBase, toBase } from '../lib/format';
 import { log, clearLogs } from '../lib/logger.js';
 import useAllowance from '../hooks/useAllowance.js';
@@ -18,6 +18,7 @@ export default function SafeSwap({ account, serverSigner }) {
   const [amount, setAmount] = useState('');
   const [quote, setQuote] = useState(null);
   const [status, setStatus] = useState('');
+  const [route, setRoute] = useState('');
   // slippage in basis points (default 2%)
   const [slippageBps, setSlip] = useState(200);
   const [swapping, setSwapping] = useState(false);
@@ -52,25 +53,28 @@ export default function SafeSwap({ account, serverSigner }) {
       clearLogs();
 
       const sellAmount = toBase(amount || '0', from.decimals);
-      const qs = new URLSearchParams({
+      const baseParams = {
         chainId: String(CHAIN_ID),
         sellToken: uiToQuoteAddress(fromSym),
         buyToken: uiToQuoteAddress(toSym),
         sellAmount,
         taker: account,
         slippageBps: String(slippageBps)
-      }).toString();
+      };
 
-      const rDex = await apiGetRetry(`/api/dex/quote?${qs}`, 2);
-      setQuote({ type: 'dex', ...rDex });
-      setLastParams({
-        chainId: String(CHAIN_ID),
-        sellToken: uiToQuoteAddress(fromSym),
-        buyToken: uiToQuoteAddress(toSym),
-        sellAmount,
-        taker: account,
-        slippageBps: String(slippageBps)
-      });
+      try {
+        setStatus('Fetching 0x…');
+        const q0x = await oxQuote(baseParams);
+        setQuote({ type: '0x', ...q0x });
+        setRoute('0x');
+      } catch (e) {
+        log('0x fail', e.message);
+        setStatus('0x unavailable, trying DEX…');
+        const qdex = await dexQuote(baseParams);
+        setQuote({ type: 'dex', ...qdex });
+        setRoute('DEX');
+      }
+      setLastParams(baseParams);
       setStatus('Quote ready');
     } catch (e) {
       setStatus(`Quote failed: ${e.message || String(e)}`);

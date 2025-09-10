@@ -1,11 +1,12 @@
-const { ethers } = require('ethers');
+const { Interface, Contract } = require('ethers');
 
-const PANCAKE_IFACE = new ethers.utils.Interface([
-  'function getAmountsOut(uint256,address[]) view returns (uint256[])'
+const PANCAKE_IFACE = new Interface([
+  'function swapExactTokensForTokens(uint amountIn,uint amountOutMin,address[] path,address to,uint deadline)',
+  'function getAmountsOut(uint amountIn,address[] path) view returns (uint[] amounts)'
 ]);
 
 function makeRouter(provider, addr) {
-  return new ethers.Contract(addr, PANCAKE_IFACE, provider);
+  return new Contract(addr, PANCAKE_IFACE, provider);
 }
 
 function normalizeToken(symbolOrAddr, { WBNB }) {

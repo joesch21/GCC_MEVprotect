@@ -1,4 +1,7 @@
-const API_BASE = import.meta.env.VITE_API_BASE?.replace(/\/$/, "");
+import { log } from './logger.js';
+
+const API = import.meta.env.VITE_API_BASE;
+const API_BASE = API?.replace(/\/$/, "");
 
 type Opts = { timeoutMs?: number; signal?: AbortSignal };
 
@@ -33,4 +36,22 @@ export async function apiGetRetry<T>(path: string, tries = 2): Promise<T> {
     catch (e) { last = e; await new Promise(r => setTimeout(r, 300 + i*400)); }
   }
   throw last;
+}
+
+export async function oxQuote(params: Record<string,string>) {
+  const qs = new URLSearchParams(params);
+  const r = await fetch(`${API}/api/0x/quote?${qs}`);
+  const text = await r.text();
+  log('0x ⇢', r.status, text.slice(0, 300));
+  if (!r.ok) throw new Error(`0x ${r.status}: ${text}`);
+  return JSON.parse(text);
+}
+
+export async function dexQuote(params: Record<string,string>) {
+  const qs = new URLSearchParams(params);
+  const r = await fetch(`${API}/api/dex/quote?${qs}`);
+  const text = await r.text();
+  log('DEX ⇢', r.status, text.slice(0, 300));
+  if (!r.ok) throw new Error(`DEX ${r.status}: ${text}`);
+  return JSON.parse(text);
 }

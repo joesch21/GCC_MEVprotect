@@ -13,7 +13,7 @@ export default function useGccUsd(account){
     (async () => {
       try {
         const priceResp = await fetch(`${API_BASE}/api/price/gcc`).then(r=>r.json());
-        const price = Number(priceResp?.priceUsd || 0);
+        const price = Number(priceResp?.usd ?? priceResp?.priceUsd ?? 0);
         let gccBal = 0;
         if (account) {
           const prov = getBrowserProvider();

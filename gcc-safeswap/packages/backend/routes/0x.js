@@ -1,17 +1,41 @@
-module.exports = (app, env) => {
-  const fetch = (...a)=>import('node-fetch').then(({default: f})=>f(...a));
+const express = require('express');
+const router = express.Router();
+const log = console;
+const fetch = (...a)=>import('node-fetch').then(({default: f})=>f(...a));
 
-  app.get('/api/0x/quote', async (req,res) => {
-    if (!env.ZEROX_API_KEY) return res.status(404).json({ error: '0x disabled (no API key set)' });
-    try{
-      const url = new URL('https://bsc.api.0x.org/swap/v1/quote');
-      Object.entries(req.query).forEach(([k,v]) => url.searchParams.set(k,v));
-      const r = await fetch(url, { headers: { '0x-api-key': env.ZEROX_API_KEY }});
-      const text = await r.text();
-      if (!r.ok) return res.status(r.status).send(text);
-      res.type('json').send(text);
-    }catch(e){
-      res.status(500).json({ error: e.message });
-    }
-  });
-};
+router.get('/quote', async (req, res) => {
+  try {
+    const sellToken = mapBnb(req.query.sellToken);
+    const buyToken  = mapBnb(req.query.buyToken);
+
+    const url = new URL('https://bsc.api.0x.org/swap/v1/quote');
+    url.search = new URLSearchParams({
+      chainId: '56',
+      ...req.query,
+      sellToken, buyToken
+    }).toString();
+
+    const r = await fetch(url, {
+      headers: { '0x-api-key': process.env.ZEROX_API_KEY || '' }
+    });
+
+    const text = await r.text();
+    log.info('0x QUOTE', { status: r.status, url: url.toString(), body: safeTrunc(text) });
+
+    if (!r.ok) return res.status(r.status).send(text);
+    res.type('application/json').send(text);
+  } catch (e) {
+    log.error('0x QUOTE ERR', { msg: e.message, stack: e.stack });
+    res.status(502).json({ error: '0x upstream error' });
+  }
+});
+
+function mapBnb(addrOrSymbol){
+  if (!addrOrSymbol) return addrOrSymbol;
+  const sym = String(addrOrSymbol).toUpperCase();
+  if (sym === 'BNB') return process.env.WBNB_ADDRESS;
+  return addrOrSymbol;
+}
+function safeTrunc(s){ return String(s).slice(0, 800); }
+
+module.exports = router;
