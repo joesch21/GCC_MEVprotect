@@ -3,6 +3,25 @@ import { log } from './logger.js';
 const API = import.meta.env.VITE_API_BASE;
 const API_BASE = API?.replace(/\/$/, "");
 
+export async function api(path: string, init: RequestInit = {}) {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: init.method || "GET",
+    mode: "cors",
+    credentials: "omit",
+    headers: {
+      "Content-Type": "application/json",
+      ...(init.headers || {})
+    },
+    body: init.body ? JSON.stringify(init.body) : undefined,
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`API ${res.status}: ${text || res.statusText}`);
+  }
+  return res.json();
+}
+
 type Opts = { timeoutMs?: number; signal?: AbortSignal };
 
 export async function apiGet<T>(path: string, opts: Opts = {}): Promise<T> {
@@ -40,7 +59,10 @@ export async function apiGetRetry<T>(path: string, tries = 2): Promise<T> {
 
 export async function oxQuote(params: Record<string,string>) {
   const qs = new URLSearchParams(params);
-  const r = await fetch(`${API}/api/0x/quote?${qs}`);
+  const r = await fetch(`${API}/api/0x/quote?${qs}`, {
+    mode: "cors",
+    credentials: "omit"
+  });
   const text = await r.text();
   log('0x ⇢', r.status, text.slice(0, 300));
   if (!r.ok) throw new Error(`0x ${r.status}: ${text}`);
@@ -49,7 +71,10 @@ export async function oxQuote(params: Record<string,string>) {
 
 export async function dexQuote(params: Record<string,string>) {
   const qs = new URLSearchParams(params);
-  const r = await fetch(`${API}/api/dex/quote?${qs}`);
+  const r = await fetch(`${API}/api/dex/quote?${qs}`, {
+    mode: "cors",
+    credentials: "omit"
+  });
   const text = await r.text();
   log('DEX ⇢', r.status, text.slice(0, 300));
   if (!r.ok) throw new Error(`DEX ${r.status}: ${text}`);
