@@ -166,7 +166,7 @@ export default function SafeSwap({ account }) {
       setQuote(data);
       setLastParams({ sellAmount });
       setStatus('Quote ready');
-      window.refreshPortfolioValue?.();
+      window.dispatchEvent(new Event("portfolio:refresh"));
   } catch (e) {
       if (seq !== quoteSeq) return;
       const raw = String(e?.message || e);
@@ -219,8 +219,9 @@ export default function SafeSwap({ account }) {
       logInfo("Swap submitted", submit);
 
       window.showToast?.("Swap submitted");
-      setTimeout(() => window.refreshPortfolioValue?.(), 12_000);
-      setTimeout(() => window.refreshPortfolioValue?.(), 30_000);
+      window.dispatchEvent(new Event("swap:completed"));
+      setTimeout(() => window.dispatchEvent(new Event("swap:completed")), 12_000);
+      setTimeout(() => window.dispatchEvent(new Event("swap:completed")), 30_000);
     } catch (e) {
       const raw = String(e?.message || e);
       logError("Swap failed", raw);
