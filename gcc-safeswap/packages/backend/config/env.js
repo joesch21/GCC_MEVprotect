@@ -9,6 +9,11 @@ if (raw.GCC_ADDRESS && !raw.TOKEN_GCC) raw.TOKEN_GCC = raw.GCC_ADDRESS;
 if (raw.TOKEN_GCC && !raw.GCC_ADDRESS) raw.GCC_ADDRESS = raw.TOKEN_GCC;
 if (raw.WBNB_ADDRESS && !raw.TOKEN_WBNB) raw.TOKEN_WBNB = raw.WBNB_ADDRESS;
 if (raw.TOKEN_WBNB && !raw.WBNB_ADDRESS) raw.WBNB_ADDRESS = raw.TOKEN_WBNB;
+// support both old and new Dexscreener pair env vars
+if (raw.DEXSCREENER_PAIR_GCC_WBNB && !raw.PAIR_GCC_WBNB)
+  raw.PAIR_GCC_WBNB = raw.DEXSCREENER_PAIR_GCC_WBNB;
+if (raw.PAIR_GCC_WBNB && !raw.DEXSCREENER_PAIR_GCC_WBNB)
+  raw.DEXSCREENER_PAIR_GCC_WBNB = raw.PAIR_GCC_WBNB;
 Object.assign(process.env, raw);
 
 const env = envalid.cleanEnv(raw, {
@@ -37,6 +42,7 @@ const env = envalid.cleanEnv(raw, {
   RELAYER_FROM_ADDRESS: str({ default: '' }),
 
   COINGECKO_ID:  str({ default: '' }),
+  PAIR_GCC_WBNB: str({ default: '' }),
   DEXSCREENER_PAIR_GCC_WBNB: str({ default: '' }),
 
   LOG_LEVEL:     str({ default: 'info' }),

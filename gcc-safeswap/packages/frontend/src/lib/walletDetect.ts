@@ -1,8 +1,14 @@
-export const isMetaMaskEnv = () => !!(window as any).ethereum?.isMetaMask;
-export const isCondorEnv   = () => !!(window as any).ethereum?.isCondor || !!(window as any).condor?.isCondor;
+export const isMetaMask = () => !!(window as any).ethereum?.isMetaMask;
+export const isCondor   = () => !!(window as any).ethereum?.isCondor || !!(window as any).condor?.isCondor;
+
+// backwards compat exports
+export const isMetaMaskEnv = isMetaMask;
+export const isCondorEnv   = isCondor;
+
+export const shortAddr = (a?: string) => (a ? `${a.slice(0,6)}…${a.slice(-4)}` : "");
 
 export const isMobileBrowser = () => /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) &&
-                                     !isMetaMaskEnv(); // exclude in-app MM webview
+                                     !isMetaMask(); // exclude in-app MM webview
 
 export function buildMetaMaskDeeplink(): string {
   // dapp deeplink preserves path & query

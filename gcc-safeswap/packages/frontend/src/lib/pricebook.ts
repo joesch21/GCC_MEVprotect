@@ -1,6 +1,8 @@
 const API_BASE = import.meta.env.VITE_API_BASE as string;
 
 export type Pricebook = {
+  wbnbUsd?: number;
+  gccPerWbnb?: number;
   BNB_USD?: number;
   GCC_USD?: number;
   GCC_BNB?: number;
@@ -16,15 +18,15 @@ export async function getPrices(): Promise<{ bnbUsd: number; gccUsd: number }> {
     const pb: Pricebook = await res.json();
 
     // Try multiple shapes/keys safely
-    const bnbUsd =
-      Number(pb.BNB_USD ?? pb?.prices?.BNB_USD ?? pb?.bnbUsd ?? 0) || 0;
+    const wbnbUsd =
+      Number(pb.wbnbUsd ?? pb.BNB_USD ?? pb?.prices?.BNB_USD ?? pb?.bnbUsd ?? 0) || 0;
 
-    // Prefer direct GCC_USD, else derive from GCC_BNB * BNB_USD
-    const gccUsdDirect = Number(pb.GCC_USD ?? pb?.prices?.GCC_USD ?? 0) || 0;
-    const gccBnb = Number(pb.GCC_BNB ?? pb?.prices?.GCC_BNB ?? 0) || 0;
-    const gccUsd = gccUsdDirect || (gccBnb && bnbUsd ? gccBnb * bnbUsd : 0);
+    // Prefer direct GCC_USD, else derive from gccPerWbnb * wbnbUsd
+    const gccUsdDirect = Number(pb.GCC_USD ?? pb?.prices?.GCC_USD ?? pb.gccUsd ?? 0) || 0;
+    const gccPerWbnb = Number(pb.gccPerWbnb ?? pb.GCC_BNB ?? pb?.prices?.GCC_BNB ?? 0) || 0;
+    const gccUsd = gccUsdDirect || (gccPerWbnb && wbnbUsd ? gccPerWbnb * wbnbUsd : 0);
 
-    return { bnbUsd, gccUsd };
+    return { bnbUsd: wbnbUsd, gccUsd };
   } catch (e) {
     // last-resort zeros (don't throw—avoids $0 flicker on network blips)
     return { bnbUsd: 0, gccUsd: 0 };
