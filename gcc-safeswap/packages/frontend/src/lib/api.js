@@ -3,30 +3,6 @@ import { smartJoin } from "./http";
 const BASE = import.meta.env.VITE_API_BASE;
 export const api = (p) => smartJoin(BASE, p);
 
-export async function apiGet(path, opts = {}) {
-  const url = api(path);
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), opts.timeoutMs ?? 8000);
-
-  try {
-    const res = await fetch(url, {
-      method: "GET",
-      mode: "cors",
-      credentials: "omit",
-      cache: "no-store",
-      signal: opts.signal ?? ctrl.signal,
-      headers: { accept: "application/json" },
-    });
-    if (!res.ok) {
-      const text = await res.text();
-      throw new Error(`HTTP ${res.status} ${res.statusText} — ${text.slice(0,120)}`);
-    }
-    return await res.json();
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
 export async function getQuote({ fromToken, toToken, amountWei, slippageBps }) {
   const url = smartJoin(BASE, "/api/quote");
   const r = await fetch(url, {
@@ -36,13 +12,15 @@ export async function getQuote({ fromToken, toToken, amountWei, slippageBps }) {
       fromToken,
       toToken,
       amount: String(amountWei),
-      slippageBps: slippageBps ?? 300,
-    }),
+      slippageBps: slippageBps ?? 300
+    })
   });
-  if (!r.ok) {
-    const txt = await r.text();
-    throw new Error(`Quote failed ${r.status}: ${txt}`);
-  }
+  if (!r.ok) throw new Error(`Quote failed ${r.status}`);
   return r.json();
 }
 
+export async function health() {
+  const url = smartJoin(BASE, "/api/plugins/health");
+  const r = await fetch(url);
+  return r.ok;
+}
