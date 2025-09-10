@@ -54,7 +54,7 @@ export default function SafeSwap({ account, serverSigner }) {
       const data = await fetchQuote({
         fromToken: fromSym,
         toToken: toSym,
-        amountWei: sellAmount,
+        amount: sellAmount,
         slippageBps
       });
       setQuote(data);
