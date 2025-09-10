@@ -11,11 +11,11 @@ const app = express();
 app.use(express.json({ limit: '1mb' }));
 app.use(helmetMiddleware());
 app.use(rateLimit({ windowMs: 60_000, max: 60, standardHeaders: true }));
-const ALLOWED = (process.env.ALLOWED_ORIGINS || '')
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || '')
   .split(',').map(s => s.trim()).filter(Boolean);
 app.use(cors({
   origin(origin, cb){
-    if (!origin || ALLOWED.includes(origin)) return cb(null, true);
+    if (!origin || allowedOrigins.includes(origin)) return cb(null, true);
     cb(new Error('CORS: origin not allowed'));
   },
   credentials: true
