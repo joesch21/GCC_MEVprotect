@@ -44,7 +44,7 @@ export default function App() {
           openSettings={() => setSettingsOpen(true)}
           account={account}
         />
-        <TopBar />
+        <TopBar account={account} />
         <main className="main">
           <section className="left">
             <SwapCard
