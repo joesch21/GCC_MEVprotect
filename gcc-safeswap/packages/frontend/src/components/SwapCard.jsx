@@ -1,9 +1,8 @@
-import React, { useState } from 'react';
+import React from 'react';
 import SafeSwap from './SafeSwap.jsx';
 import { connectInjected, ensureBscMainnet, metamaskDeepLink } from '../lib/wallet';
 
-export default function SwapCard({ onToggleLogs, onOpenSettings }) {
-  const [account, setAccount] = useState(null);
+export default function SwapCard({ account, setAccount, onToggleLogs }) {
 
   async function connectHere() {
     try {
@@ -26,11 +25,11 @@ export default function SwapCard({ onToggleLogs, onOpenSettings }) {
         </div>
       )}
 
-      <SafeSwap account={account} />
-      <div className="form-row">
+      <div className="form-row" style={{ justifyContent: 'flex-end' }}>
         <button className="btn ghost" onClick={onToggleLogs}>Show Logs</button>
-        <button className="btn ghost" onClick={onOpenSettings}>Settings</button>
       </div>
+
+      <SafeSwap account={account} />
     </div>
   );
 }
