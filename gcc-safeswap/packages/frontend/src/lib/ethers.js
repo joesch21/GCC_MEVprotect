@@ -1,7 +1,7 @@
 import { BrowserProvider, Contract, MaxUint256, Wallet, JsonRpcProvider } from 'ethers';
 
 export const getBrowserProvider = () => {
-  if (!window.ethereum) throw new Error('MetaMask not found');
+  if (!window.ethereum) throw new Error('No injected wallet found');
   return new BrowserProvider(window.ethereum);
 };
 
