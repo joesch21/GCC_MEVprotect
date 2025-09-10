@@ -1,4 +1,5 @@
 import React from 'react';
+import { HeaderBadge } from './HeaderBadge.tsx';
 
 export default function AppHeader({ openSettings, account }) {
   
@@ -14,13 +15,8 @@ export default function AppHeader({ openSettings, account }) {
           <i className="icon-settings" /> Settings
         </button>
         <div className="divider" />
-        {account && <WalletChip address={account} />}
+        <HeaderBadge account={account} />
       </div>
     </header>
   );
-}
-
-function WalletChip({ address }) {
-  const display = `${address.slice(0, 6)}…${address.slice(-4)}`;
-  return <div className="pill">{display}</div>;
 }

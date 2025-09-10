@@ -5,7 +5,7 @@ export default function TopBar({ account }) {
   const { totalUsd, bnb, gcc } = usePortfolio(account);
 
   const fmtUsd = (n) =>
-    n <= 0 ? "$0.00" :
+    n <= 0 ? "$0.0000" :
     (n < 1 ? `$${n.toFixed(4)}` : `$${n.toLocaleString(undefined, { maximumFractionDigits: 2 })}`);
 
   const fmtToken = (n, dec) => account ? n.toFixed(dec) : '—';
