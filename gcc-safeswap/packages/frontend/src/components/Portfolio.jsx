@@ -2,16 +2,24 @@ import React, { useEffect, useMemo, useState } from "react";
 import { formatUnits } from "ethers";
 import { getBrowserProvider } from "../lib/ethers.js";
 import useGccUsd from "../hooks/useGccUsd.js";
+import useGccBalance from "../hooks/useGccBalance.ts";
 import { isMobile, dappDeepLink, addNetworkDeepLink } from "../lib/metamask.js";
+
+const GCC_TOKEN = import.meta.env.VITE_TOKEN_GCC;
 
 export default function Portfolio({ account }) {
   const [bnb, setBnb] = useState(null);
-  const { usd, gcc, loading } = useGccUsd(account);
+  const { usd, loading } = useGccUsd(account);
+  const { balance: gccBal, err: gccErr } = useGccBalance(GCC_TOKEN, account);
 
   const short = useMemo(() => {
     if (!account) return "";
     return `${account.slice(0, 6)}…${account.slice(-4)}`;
   }, [account]);
+
+  useEffect(() => {
+    console.debug("VITE_TOKEN_GCC", GCC_TOKEN);
+  }, []);
 
   useEffect(() => {
     if (!account) { setBnb(null); return; }
@@ -46,8 +54,9 @@ export default function Portfolio({ account }) {
       </div>
       <div className="pill pill--metric">
         <span>GCC</span>
-        <strong>{gcc == null ? "…" : gcc.toLocaleString(undefined, { maximumFractionDigits: 2 })}</strong>
+        <strong>{gccBal != null ? gccBal.toFixed(2) : "—"}</strong>
       </div>
+      {gccErr && <span className="muted" style={{marginLeft:8}}>({gccErr})</span>}
       <button className="pill">
         ▸ Portfolio {loading ? '' : (usd != null ? `• $${usd.toFixed(2)}` : '')}
       </button>
