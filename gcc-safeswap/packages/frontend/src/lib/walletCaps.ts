@@ -1,5 +1,6 @@
-export function detectCaps(ethereum: any, otherProviders?: any) {
+export function detectCaps(ethereum: any, win?: any) {
   const isMetaMask = !!ethereum?.isMetaMask;
-  const isCondor   = !!(ethereum?.isCondor || (otherProviders?.condor?.isCondor));
+  const providers = ethereum?.providers || [ethereum, win?.condor].filter(Boolean);
+  const isCondor = providers.some((p: any) => p?.isCondor);
   return { isMetaMask, isCondor };
 }
