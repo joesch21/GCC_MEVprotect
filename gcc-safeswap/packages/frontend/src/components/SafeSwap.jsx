@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ethers, BrowserProvider, Contract } from 'ethers';
-import { TOKENS, uiToQuoteAddress, CHAIN_BSC } from '../lib/tokens';
-import { api } from '../lib/api';
+import { TOKENS, CHAIN_BSC } from '../lib/tokens';
+import { api, getQuote as fetchQuote } from '../lib/api';
 import { fromBase, toBase } from '../lib/format';
 import { log, clearLogs } from '../lib/logger.js';
 import useAllowance from '../hooks/useAllowance.js';
@@ -51,30 +51,18 @@ export default function SafeSwap({ account, serverSigner }) {
       clearLogs();
 
       const sellAmount = toBase(amount || '0', from.decimals);
-      const baseParams = {
-        chainId: String(CHAIN_ID),
-        sellToken: uiToQuoteAddress(fromSym),
-        buyToken: uiToQuoteAddress(toSym),
-        sellAmount,
-        taker: account,
-        slippageBps: String(slippageBps)
-      };
-
-      const url = api(`dex/quote?chainId=${CHAIN_ID}&sellToken=${baseParams.sellToken}&buyToken=${baseParams.buyToken}&sellAmount=${sellAmount}&taker=${account}&slippageBps=${slippageBps}`);
-      const r = await fetch(url);
-      const text = await r.text();
-      let j;
-      try {
-        j = JSON.parse(text);
-      } catch {
-        log(`QUOTE HTML/ERR: ${text}`);
-        throw new Error('Quote parsing failed');
-      }
-      setQuote(j);
-      setLastParams(baseParams);
+      const data = await fetchQuote({
+        fromToken: fromSym,
+        toToken: toSym,
+        amountWei: sellAmount,
+        slippageBps
+      });
+      setQuote(data);
+      setLastParams({ sellAmount });
       setStatus('Quote ready');
     } catch (e) {
-      setStatus(`Quote failed: ${e.message || String(e)}`);
+      setStatus('Quote failed — try again.');
+      console.error(e);
     }
   }
 
@@ -242,22 +230,11 @@ export default function SafeSwap({ account, serverSigner }) {
       )}
       {quote && (
         <div className="quote">
-          {quote.source === 'DEX' ? (
-            <>
-              <div className="badge">DEX</div>
-              <div>Buy Amount: ~{fromBase(quote.buyAmount, to.decimals)} {to.symbol}</div>
-            </>
-          ) : (
-            <>
-              <div className="badge">0x</div>
-              <div>Buy Amount: ~{fromBase(quote.buyAmount, to.decimals)} {to.symbol}</div>
-              <div>Route: {quote.data?.route?.fills?.map(f=>f.source).join(' → ') || 'aggregated'}</div>
-            </>
-          )}
+          <div className="badge">{quote.source}</div>
+          <div>Buy Amount: ~{fromBase(quote.buyAmount, to.decimals)} {to.symbol}</div>
           <div className="muted">
-            Min received (~{(Number(fromBase(quote.buyAmount, to.decimals)) * (1 - slippageBps/10000)).toFixed(8)} {to.symbol}) at {(slippageBps/100).toFixed(2)}% slippage
+            Min received ~{fromBase(quote.minBuyAmount, to.decimals)} {to.symbol} at {(quote.slippageBps/100).toFixed(2)}% slippage
           </div>
-          {gas && <div className="muted">Estimated gas: {Number(gas)/1e5}</div>}
         </div>
       )}
       {!networkOk && <div className="error">Switch to BNB Chain</div>}
