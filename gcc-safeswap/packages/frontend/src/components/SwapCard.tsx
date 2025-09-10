@@ -2,7 +2,15 @@ import React from 'react';
 import SafeSwap from './SafeSwap.jsx';
 import { connectInjected, ensureBscMainnet, metamaskDeepLink, connectCondor, getCondorProvider } from '../lib/wallet';
 
-export default function SwapCard({ account, setAccount, onToggleLogs }) {
+interface SwapCardProps {
+  account: string | null;
+  setAccount: React.Dispatch<React.SetStateAction<string | null>>;
+  onToggleLogs: () => void;
+}
+
+export default function SwapCard({ account, setAccount, onToggleLogs }: SwapCardProps) {
+  const eth = typeof window !== "undefined" ? window.ethereum : undefined;
+  const condor = typeof window !== "undefined" ? window.condor ?? undefined : undefined;
 
   async function connectHere() {
     try {
@@ -17,7 +25,7 @@ export default function SwapCard({ account, setAccount, onToggleLogs }) {
   async function connectCondorWallet() {
     try {
       const acc = await connectCondor();
-      await ensureBscMainnet(getCondorProvider() || (window as any).ethereum);
+      await ensureBscMainnet(getCondorProvider() || condor || eth);
       setAccount(acc);
     } catch (e) {
       /* no-op */

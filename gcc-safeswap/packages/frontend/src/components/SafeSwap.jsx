@@ -122,7 +122,7 @@ export default function SafeSwap({ account }) {
       const url = cfg?.rpcUrl || '';
       setRpcLabel(lbl);
       setRpcUrl(url);
-      setCaps(detectCaps((window as any).ethereum, (window as any)));
+      setCaps(detectCaps(window.ethereum, window));
     }
     init();
     const onChainChanged = () => {
@@ -131,7 +131,7 @@ export default function SafeSwap({ account }) {
       const url = cfg?.rpcUrl || '';
       setRpcLabel(lbl);
       setRpcUrl(url);
-      setCaps(detectCaps((window as any).ethereum, (window as any)));
+      setCaps(detectCaps(window.ethereum, window));
     };
     window.ethereum?.on('chainChanged', onChainChanged);
     return () => window.ethereum?.removeListener('chainChanged', onChainChanged);

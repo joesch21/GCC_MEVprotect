@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import AppHeader from './components/AppHeader.jsx';
 import TopBar from './components/TopBar.jsx';
-import SwapCard from './components/SwapCard.jsx';
+import SwapCard from './components/SwapCard.tsx';
 import DebugDrawer from './components/DebugDrawer.jsx';
 import WalletUnlockModal from './components/WalletUnlockModal.jsx';
 import SettingsDrawer from './components/SettingsDrawer.jsx';
