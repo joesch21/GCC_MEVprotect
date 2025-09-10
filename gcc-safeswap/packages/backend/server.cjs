@@ -67,6 +67,8 @@ app.get(["/api/plugins/health", "/plugins/health", "/health"], (_req, res) =>
 
 // Private RPC chain parameters
 app.use("/api/private-rpc", require("./routes/privateRpc"));
+// Token price lookup
+app.use("/api/pricebook", require("./routes/pricebook"));
 
 // ---------- Helpers ----------
 const _decimalsCache = new Map();
