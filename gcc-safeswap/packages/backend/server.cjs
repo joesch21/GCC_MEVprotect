@@ -3,6 +3,7 @@ const express = require("express");
 const morgan = require("morgan");
 const cors = require("cors");
 const fetch = require("node-fetch");
+const { ethers } = require("ethers");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -13,8 +14,50 @@ const BNB_NATIVE = "BNB"; // 0x accepts "BNB" as native token on BSC
 const DEFAULT_SLIPPAGE_BPS = 300; // 3.00%
 const REFLECTION_PAD = 0.98; // 2% buffer on top of aggregator output
 const CHAIN_NAME = "bsc";
-const CHAIN_ID = 56; // for 1inch URL
 // ----------------------------
+
+// === PancakeSwap v2 constants ===
+const PCS_V2_ROUTER = "0x10ED43C718714eb63d5aA57B78B54704E256024E";
+const WBNB = "0xbb4Cdb9CBd36B01bD1cBaEBF2De08d9173bc095c";
+const USDT = "0x55d398326f99059fF775485246999027B3197955";
+
+const PCS_V2_ABI = [
+  "function getAmountsOut(uint amountIn, address[] calldata path) view returns (uint[] memory amounts)"
+];
+
+function toPCSAddress(token) {
+  if (token.toUpperCase() === "BNB") return WBNB;
+  return token;
+}
+
+async function quoteViaPCS({ fromToken, toToken, amount }) {
+  const provider = new ethers.providers.JsonRpcProvider(process.env.BSC_RPC);
+  const router = new ethers.Contract(PCS_V2_ROUTER, PCS_V2_ABI, provider);
+
+  const sell = toPCSAddress(fromToken);
+  const buy = toPCSAddress(toToken);
+
+  const paths = [
+    [sell, buy],
+    [sell, USDT, buy]
+  ];
+
+  for (const path of paths) {
+    try {
+      const out = await router.getAmountsOut(ethers.BigNumber.from(amount), path);
+      const buyAmount = out[out.length - 1].toString();
+      return {
+        source: "pcs_v2",
+        sellAmount: String(amount),
+        buyAmount
+      };
+    } catch (_) {
+      // try next path
+    }
+  }
+
+  throw new Error("PCS no route for provided amount/path candidates");
+}
 
 app.use(cors());
 app.use(express.json());
@@ -58,36 +101,6 @@ async function quoteVia0x({ fromToken, toToken, amount, slippageBps }) {
   return { source: "0x", ...data };
 }
 
-// Optional 1inch fallback (enable only if ONEINCH_API_KEY is set)
-async function quoteVia1inch({ fromToken, toToken, amount, slippageBps }) {
-  if (!process.env.ONEINCH_API_KEY) {
-    throw new Error("1inch disabled (missing ONEINCH_API_KEY)");
-  }
-  const url = new URL(`https://api.1inch.dev/swap/v6.0/${CHAIN_ID}/quote`);
-  url.searchParams.set("src", fromToken);
-  url.searchParams.set("dst", toToken);
-  url.searchParams.set("amount", amount);
-  // 1inch expects percent, not bps. 300 bps => 3.0
-  url.searchParams.set("slippage", (slippageBps || DEFAULT_SLIPPAGE_BPS) / 100);
-
-  const r = await fetch(url.toString(), {
-    headers: { Authorization: `Bearer ${process.env.ONEINCH_API_KEY}` },
-    timeout: 12_000,
-  });
-  if (!r.ok) {
-    const err = await r.text();
-    throw new Error(`1inch ${r.status}: ${err}`);
-  }
-  const data = await r.json();
-  // Align key names roughly to 0x shape for FE simplicity
-  return {
-    source: "1inch",
-    buyAmount: data.dstAmount, // 1inch returns srcAmount/dstAmount (strings)
-    sellAmount: data.srcAmount,
-    // gas / route fields differ; FE should not depend on them tightly.
-    ...data
-  };
-}
 
 async function handleQuote(req, res) {
   try {
@@ -110,17 +123,18 @@ async function handleQuote(req, res) {
       });
     } catch (e0) {
       console.error("0x quote failed:", e0.message);
-      // Try 1inch fallback ONLY if key present
       try {
-        q = await quoteVia1inch({
+        q = await quoteViaPCS({
           fromToken: sellToken,
           toToken: buyToken,
-          amount: String(amount),
-          slippageBps: Number(slippageBps || DEFAULT_SLIPPAGE_BPS)
+          amount: String(amount)
         });
-      } catch (e1) {
-        console.error("1inch fallback failed:", e1.message);
-        return res.status(502).json({ error: "No route from aggregators", details: e0.message });
+      } catch (ePcs) {
+        console.error("PCS quote failed:", ePcs.message);
+        return res.status(502).json({
+          error: "No route from aggregators",
+          details: e0.message || ePcs.message
+        });
       }
     }
 
