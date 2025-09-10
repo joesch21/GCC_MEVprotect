@@ -306,6 +306,35 @@ app.post("/api/tx/swap", async (req, res) => {
   }
 });
 
+// ---------- Private Relay ----------
+app.post("/api/relay/private", async (req, res) => {
+  try {
+    const { rawTx } = req.body || {};
+    if (!rawTx) return res.status(400).json({ error: "rawTx required" });
+
+    const r = await fetch("https://bsc.blxrbdn.com/submit", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-auth-token": process.env.BLXR_AUTH,
+      },
+      body: JSON.stringify({ transaction: rawTx }),
+    });
+
+    const json = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      return res
+        .status(502)
+        .json({ error: "relay_failed", details: json || (await r.text()) });
+    }
+    res.json({ ok: true, result: json });
+  } catch (e) {
+    res
+      .status(502)
+      .json({ error: "relay_error", details: String(e?.message || e) });
+  }
+});
+
 app.get("/api/pricebook", async (_req, res) => {
   try {
     const provider = new ethers.providers.JsonRpcProvider(process.env.BSC_RPC);

@@ -15,6 +15,65 @@ function isPositive(x) {
   return Number.isFinite(n) && n > 0;
 }
 
+function humanizeError(err) {
+  const s = String(err || "").toLowerCase();
+
+  if (s.includes("no route") || s.includes("no_route")) {
+    return "No available route for this amount at the moment. Try a different size or pair.";
+  }
+  if (s.includes("amount too small") || s.includes("insufficient output amount")) {
+    return "Trade size is below what routers will quote right now. Try a larger amount.";
+  }
+  if (s.includes("deadline") || s.includes("expired")) {
+    return "This quote expired. Please refresh and try again.";
+  }
+  if (s.includes("user rejected")) {
+    return "Transaction canceled in wallet.";
+  }
+  return "Couldn’t complete that request. Please try again.";
+}
+
+async function sendWithPrivacy({ tx, account, usePrivateRelay }) {
+  if (!usePrivateRelay) {
+    const hash = await window.ethereum.request({
+      method: "eth_sendTransaction",
+      params: [{ from: account, to: tx.to, data: tx.data, value: tx.value }],
+    });
+    return { hash, via: "rpc" };
+  }
+
+  const provider = new ethers.providers.Web3Provider(window.ethereum);
+  const signer = provider.getSigner();
+
+  const chainId = (await provider.getNetwork()).chainId;
+  const nonce = await provider.getTransactionCount(account, "latest");
+  const gasPrice = await provider.getGasPrice();
+  const gas = await provider.estimateGas({ from: account, to: tx.to, data: tx.data, value: tx.value });
+
+  const unsigned = {
+    to: tx.to,
+    data: tx.data,
+    value: ethers.BigNumber.from(tx.value || "0x0"),
+    gasLimit: gas.mul(120).div(100),
+    gasPrice,
+    nonce,
+    chainId,
+    type: 0,
+  };
+
+  const raw = await signer.signTransaction(unsigned);
+
+  const resp = await fetch(`${import.meta.env.VITE_API_BASE}/api/relay/private`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ rawTx: raw }),
+  }).then((r) => r.json());
+
+  if (!resp?.ok) throw new Error("Private relay failed");
+
+  return { hash: resp.result?.txHash || resp.result?.hash || null, via: "private" };
+}
+
 export default function SafeSwap({ account }) {
   const [fromSym, setFromSym] = useState('BNB');
   const [toSym, setToSym] = useState('GCC');
@@ -28,6 +87,8 @@ export default function SafeSwap({ account }) {
   const [swapping, setSwapping] = useState(false);
   const [networkOk, setNetworkOk] = useState(true);
   const [lastParams, setLastParams] = useState(null);
+  const [rpcLabel, setRpcLabel] = useState('');
+  const [sendPrivately, setSendPrivately] = useState(false);
 
   const CHAIN_ID = CHAIN_BSC;
   const REFLECTION_SET = new Set(['0x092ac429b9c3450c9909433eb0662c3b7c13cf9a']);
@@ -38,11 +99,17 @@ export default function SafeSwap({ account }) {
         const chain = await window.ethereum.request({ method: 'eth_chainId' });
         setNetworkOk(chain === '0x38');
       }catch{ setNetworkOk(false); }
+      const cfg = window.ethereum?._state?.providerConfig;
+      const lbl = cfg?.nickname || cfg?.chainName || '';
+      setRpcLabel(lbl);
+      setSendPrivately(/private/i.test(lbl));
     }
     check();
     window.ethereum?.on('chainChanged', check);
     return () => window.ethereum?.removeListener('chainChanged', check);
   }, []);
+  const rpcIsPrivate = /private/i.test(rpcLabel);
+  const usePrivateRelay = sendPrivately && !rpcIsPrivate;
 
   async function onGetQuote() {
     const seq = ++quoteSeq;
@@ -73,9 +140,11 @@ export default function SafeSwap({ account }) {
       window.refreshPortfolioValue?.();
   } catch (e) {
       if (seq !== quoteSeq) return;
-      const msg = String(e?.message || e);
-      logError("UI: Quote FAILED", { seq, err: msg });
-      setStatus(msg === 'amount_must_be_positive' ? 'Amount must be positive.' : 'Quote failed — try again.');
+      const raw = String(e?.message || e);
+      logError("UI: Quote FAILED", { seq, err: raw });
+      const msg = raw === 'amount_must_be_positive' ? 'Amount must be positive.' : humanizeError(raw);
+      setStatus(msg);
+      window.showToast?.(msg);
       console.error(e);
     }
   }
@@ -111,18 +180,18 @@ export default function SafeSwap({ account }) {
         minAmountOut: minOut,
         recipient: account
       });
-
-      const swapHash = await window.ethereum.request({
-        method: "eth_sendTransaction",
-        params: [{ from: account, to: swap.tx.to, data: swap.tx.data, value: swap.tx.value }]
-      });
-      logInfo("Swap tx sent", { swapHash });
+      const submit = await sendWithPrivacy({ tx: swap.tx, account, usePrivateRelay });
+      logInfo("Swap submitted", submit);
 
       window.showToast?.("Swap submitted");
       setTimeout(() => window.refreshPortfolioValue?.(), 12_000);
+      setTimeout(() => window.refreshPortfolioValue?.(), 30_000);
     } catch (e) {
-      logError("Swap failed", String(e?.message || e));
-      setStatus("Swap failed — " + String(e?.message || e));
+      const raw = String(e?.message || e);
+      logError("Swap failed", raw);
+      const msg = humanizeError(raw);
+      setStatus(msg);
+      window.showToast?.(msg);
     } finally {
       setSwapping(false);
     }
@@ -205,6 +274,15 @@ export default function SafeSwap({ account }) {
         </div>
       )}
       {!networkOk && <div className="error">Switch to BNB Chain</div>}
+      <div className="row" style={{marginTop:8}}>
+        <label style={{display:'flex',alignItems:'center',gap:6}}>
+          <input type="checkbox" checked={sendPrivately} onChange={e=>setSendPrivately(e.target.checked)} disabled={rpcIsPrivate} />
+          Send privately (MEV-protected)
+        </label>
+        <div className="muted" style={{marginLeft:8}}>
+          {rpcIsPrivate ? 'Private RPC: ON' : (sendPrivately ? 'Private Relay: ON' : 'Public mempool (not private)')}
+        </div>
+      </div>
       <button
         className="primary"
         disabled={!quote || swapping || !networkOk}
