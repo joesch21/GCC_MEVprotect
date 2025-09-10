@@ -5,7 +5,7 @@ import WalletUnlockModal from './components/WalletUnlockModal.jsx';
 import useShieldStatus from './hooks/useShieldStatus.js';
 import { ServerSigner } from './lib/serverSigner.js';
 import { getBrowserProvider } from './lib/ethers.js';
-import LogTail from "./components/LogTail.jsx";
+import DebugLogPanel from "./components/DebugLogPanel.jsx";
 import SettingsDrawer from './components/SettingsDrawer.jsx';
 import PerformanceMode from './components/PerformanceMode.jsx';
 
@@ -116,7 +116,7 @@ export default function App() {
           </div>
         </section>
       </main>
-      <LogTail />
+      <DebugLogPanel />
 
       <WalletUnlockModal
         open={unlockOpen}

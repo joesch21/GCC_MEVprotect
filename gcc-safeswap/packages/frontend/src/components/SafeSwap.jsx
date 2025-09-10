@@ -3,7 +3,7 @@ import { ethers, BrowserProvider, Contract } from 'ethers';
 import { TOKENS, CHAIN_BSC } from '../lib/tokens';
 import { api, getQuote as fetchQuote } from '../lib/api';
 import { fromBase, toBase } from '../lib/format';
-import { log, clearLogs } from '../lib/logger.js';
+import { logInfo, logError, clearLogs } from '../lib/logger.js';
 import useAllowance from '../hooks/useAllowance.js';
 import TokenSelect from './TokenSelect.jsx';
 
@@ -49,6 +49,7 @@ export default function SafeSwap({ account, serverSigner }) {
       setQuote(null);
       setGas(null);
       clearLogs();
+      logInfo("UI: GetQuote clicked", { fromToken: fromSym, toToken: toSym, amount, slippageBps });
 
       const sellAmount = toBase(amount || '0', from.decimals);
       const data = await fetchQuote({
@@ -57,10 +58,12 @@ export default function SafeSwap({ account, serverSigner }) {
         amount: sellAmount,
         slippageBps
       });
+      logInfo("UI: Quote OK", data);
       setQuote(data);
       setLastParams({ sellAmount });
       setStatus('Quote ready');
     } catch (e) {
+      logError("UI: Quote FAILED", String(e?.message || e));
       setStatus('Quote failed — try again.');
       console.error(e);
     }
@@ -118,12 +121,12 @@ export default function SafeSwap({ account, serverSigner }) {
       setStatus(`Sent: ${sent.hash}`);
       const rec = await sent.wait();
       setStatus(`Confirmed in block ${rec.blockNumber}`);
-      log('RECEIPT', rec);
+      logInfo('RECEIPT', rec);
     } catch(e) {
       console.error(e);
       const msg = e?.shortMessage || e?.reason || e?.message || String(e);
       setStatus(`Swap failed: ${msg}`);
-      log('SWAP ERROR', e);
+      logError('SWAP ERROR', e);
     } finally {
       setSwapping(false);
     }

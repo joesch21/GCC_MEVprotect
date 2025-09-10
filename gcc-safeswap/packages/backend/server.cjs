@@ -8,6 +8,12 @@ const { ethers } = require("ethers");
 const app  = express();
 const PORT = process.env.PORT || 3000;
 
+// ---------- Logging ----------
+function t() { return new Date().toISOString(); }
+function logInfo(msg, obj)  { console.log(`[${t()}] ${msg}`, obj ?? ""); }
+function logWarn(msg, obj)  { console.warn(`[${t()}] ${msg}`, obj ?? ""); }
+function logErr (msg, obj)  { console.error(`[${t()}] ${msg}`, obj ?? ""); }
+
 // ---------- Constants ----------
 const GCC  = "0x092ac429b9c3450c9909433eb0662c3b7c13cf9a";
 const WBNB = "0xbb4Cdb9CBd36B01bD1cBaEBF2De08d9173bc095c";
@@ -127,32 +133,36 @@ async function handleQuote(req, res) {
       return res.status(400).json({ error: "fromToken, toToken, amount are required" });
     }
 
-    // Try 0x first
+    const provider = new ethers.providers.JsonRpcProvider(process.env.BSC_RPC);
+    const amountRaw = await toRawAmount(provider, sell, String(amount));
+
+    logInfo("QUOTE: req", { fromToken, toToken, amount, slippageBps, sell, buy, amountRaw });
+
     let q;
+    // 0x primary
     try {
-      const provider = new ethers.providers.JsonRpcProvider(process.env.BSC_RPC);
-      const amountRaw = await toRawAmount(provider, sell, String(amount));
       q = await quoteVia0x({ sell, buy, amountRaw, slippageBps });
+      logInfo("QUOTE: 0x OK", { sellAmount: q.sellAmount, buyAmount: q.buyAmount });
     } catch (e0) {
-      // Fallback to PCS v2
+      logWarn("QUOTE: 0x FAIL", String(e0?.message || e0));
+      // PCS v2 fallback (multi-path)
       try {
         q = await quoteViaPCSv2({ sell, buy, amount: String(amount) });
+        logInfo("QUOTE: PCS OK", { path: q.path, buyAmount: q.buyAmount });
       } catch (ePcs) {
-        return res.status(502).json({ error: "no_route", details: { ox: String(e0?.message||""), pcs: String(ePcs?.message||"") } });
+        logErr("QUOTE: PCS FAIL", String(ePcs?.message || ePcs));
+        return res.status(502).json({
+          error: "no_route",
+          details: { ox: String(e0?.message || ""), pcs: String(ePcs?.message || "") }
+        });
       }
     }
 
-    // Reflection / min-received padding
+    // min-received (reflection pad)
     const buyStr = String(q.buyAmount);
-    let minStr;
-    try {
-      const bi = BigInt(buyStr);
-      minStr = ((bi * BigInt(10000 - REFLECTION_PAD_BPS)) / 10000n).toString();
-    } catch {
-      minStr = String(Math.floor(Number(buyStr) * (1 - REFLECTION_PAD_BPS / 10000)));
-    }
+    const minStr = ((BigInt(buyStr) * BigInt(10000 - REFLECTION_PAD_BPS)) / 10000n).toString();
 
-    res.json({
+    const payload = {
       source: q.source,
       sellToken: sell,
       buyToken: buy,
@@ -161,9 +171,13 @@ async function handleQuote(req, res) {
       minBuyAmount: minStr,
       slippageBps: Number(slippageBps || DEFAULT_SLIPPAGE_BPS),
       at: Date.now()
-    });
+    };
+
+    logInfo("QUOTE: RESP", { source: payload.source, buy: payload.buyAmount, min: payload.minBuyAmount });
+    res.json(payload);
   } catch (err) {
-    return res.status(502).json({ error: "internal", details: String(err.message || err) });
+    logErr("QUOTE: HARD FAIL", String(err?.message || err));
+    return res.status(502).json({ error: "internal", details: String(err?.message || err) });
   }
 }
 
