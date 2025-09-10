@@ -1,238 +1,218 @@
+// server.cjs
 const express = require("express");
-const morgan = require("morgan");
-const cors = require("cors");
-const fetch = require("node-fetch");
+const morgan  = require("morgan");
+const cors    = require("cors");
+const fetch   = require("node-fetch");
 const { ethers } = require("ethers");
 
-const app = express();
+const app  = express();
 const PORT = process.env.PORT || 3000;
 
-// ---- Tokens / routers ----
-const GCC_BEP20 = "0x092ac429b9c3450c9909433eb0662c3b7c13cf9a";
-const WBNB      = "0xbb4Cdb9CBd36B01bD1cBaEBF2De08d9173bc095c";
-const USDT      = "0x55d398326f99059fF775485246999027B3197955";
-const BTCB      = "0x7130d2A12B9BCbFAe4f2634d864A1Ee1Ce3Ead9c"; // BTCB on BNB Chain
-const SOL       = "0x22ADBeC2ce1022060b2abe12A168B5AC0416dd6B"; // SOL (BEP-20) on BNB Chain
+// ---------- Constants ----------
+const GCC  = "0x092ac429b9c3450c9909433eb0662c3b7c13cf9a";
+const WBNB = "0xbb4Cdb9CBd36B01bD1cBaEBF2De08d9173bc095c";
+const USDT = "0x55d398326f99059fF775485246999027B3197955";
+const BTCB = "0x7130d2A12B9BCbFAe4f2634d864A1Ee1Ce3Ead9c";
+const SOL  = "0x22ADBeC2ce1022060b2abe12A168B5AC0416dd6B"; // bridged SOL on BNB
 
-const PCS_V2_ROUTER = "0x10ED43C718714eb63d5aA57B78B54704E256024E";
+const PCS_V2_ROUTER  = "0x10ED43C718714eb63d5aA57B78B54704E256024E";
+const PCS_V2_FACTORY = "0xCA143Ce32Fe78f1f7019d7d551a6402fC5350c73";
 
-const ERC20_ABI = [
-  "function decimals() view returns (uint8)"
+const ERC20_ABI   = ["function decimals() view returns (uint8)","function symbol() view returns (string)"];
+const PCS_V2_ABI  = ["function getAmountsOut(uint amountIn, address[] calldata path) view returns (uint[] memory)"];
+const FACTORY_ABI = ["function getPair(address,address) view returns (address)"];
+const PAIR_ABI    = [
+  "function token0() view returns (address)",
+  "function token1() view returns (address)",
+  "function getReserves() view returns (uint112,uint112,uint32)"
 ];
-const PCS_V2_ABI = [
-  "function getAmountsOut(uint amountIn, address[] calldata path) view returns (uint[] memory amounts)"
-];
 
-const DEFAULT_SLIPPAGE_BPS = 300; // 3%
-const REFLECTION_PAD_BPS   = 200; // ~2% extra min-received pad
+const DEFAULT_SLIPPAGE_BPS = 300; // 3.00%
+const REFLECTION_PAD_BPS   = 200; // 2.00% min-received buffer
 
-console.log("🛠️ SAFE-BOOT",
-  JSON.stringify({
-    NODE: process.version,
-    HAS_BSC_RPC: Boolean(process.env.BSC_RPC),
-    PORT: process.env.PORT
-  })
-);
-
+// ---------- App ----------
 app.use(cors());
 app.use(express.json());
 app.use(morgan("tiny"));
 
-// ---- Health (aliases) ----
-app.get(["/api/plugins/health", "/plugins/health", "/health"], (_req, res) => {
-  res.json({ status: "ok", ts: Date.now() });
-});
+console.log("🛠️ SAFE-BOOT", JSON.stringify({
+  NODE: process.version,
+  HAS_BSC_RPC: !!process.env.BSC_RPC,
+  PORT_BOUND: PORT
+}));
 
-app.post("/api/_debug/echo", (req, res) => {
-  res.json({
-    ok: true,
-    headers: req.headers,
-    body: req.body,
-    hasBscRpc: Boolean(process.env.BSC_RPC)
-  });
-});
+// Health (aliases)
+app.get(["/api/plugins/health", "/plugins/health", "/health"], (_req, res) =>
+  res.json({ status: "ok", ts: Date.now() })
+);
 
-// ---- helpers ----
-function normalizeToken(token) {
-  const s = String(token || "").trim();
-  if (!s) return null;
-  if (s.toUpperCase() === "GCC") return GCC_BEP20;
-  if (s.toUpperCase() === "BNB") return WBNB; // force WBNB for router math
-  return s; // assume address
-}
-
-// Detect whether an amount is human-friendly (e.g., "1.0") vs raw units
-function looksLikeHumanAmount(str) {
-  try {
-    return /[.]/.test(str) || BigInt(str) < 100000000n;
-  } catch {
-    return true;
-  }
-}
-
+// ---------- Helpers ----------
 const _decimalsCache = new Map();
-async function getDecimals(provider, tokenAddress) {
-  if (_decimalsCache.has(tokenAddress)) return _decimalsCache.get(tokenAddress);
-  const erc20 = new ethers.Contract(tokenAddress, ERC20_ABI, provider);
-  const dec = await erc20.decimals();
-  _decimalsCache.set(tokenAddress, dec);
-  return dec;
+async function getDecimals(provider, addr) {
+  if (_decimalsCache.has(addr)) return _decimalsCache.get(addr);
+  const t = new ethers.Contract(addr, ERC20_ABI, provider);
+  const d = await t.decimals();
+  _decimalsCache.set(addr, d);
+  return d;
 }
 
-async function toRawAmount(provider, tokenAddress, amountStr) {
+async function toRawAmount(provider, tokenAddr, amountStr) {
   try {
-    if (!/[.]/.test(amountStr) && BigInt(amountStr) > 1000000000000n) {
-      return amountStr;
-    }
+    if (!/[.]/.test(String(amountStr)) && BigInt(amountStr) > 1_000_000_000_000n) return String(amountStr);
   } catch {}
-
-  const dec = await getDecimals(provider, tokenAddress);
-  const raw = ethers.utils.parseUnits(amountStr, dec);
+  const dec = await getDecimals(provider, tokenAddr);
+  const raw = ethers.utils.parseUnits(String(amountStr), dec);
   return raw.toString();
 }
 
-// ---- 0x primary ----
-async function quoteVia0x({ fromToken, toToken, amount, slippageBps }) {
+function normalize(token) {
+  const s = String(token || "").trim();
+  if (!s) return null;
+  if (s.toUpperCase() === "GCC") return GCC;
+  if (s.toUpperCase() === "BNB") return WBNB; // use WBNB for quoting
+  return s; // assume address
+}
+
+// ---------- 0x (primary) ----------
+async function quoteVia0x({ sell, buy, amountRaw, slippageBps }) {
   const url = new URL("https://bsc.api.0x.org/swap/v1/quote");
-  url.searchParams.set("sellToken", fromToken);
-  url.searchParams.set("buyToken",  toToken);
-  url.searchParams.set("sellAmount", amount);
+  url.searchParams.set("sellToken", sell);
+  url.searchParams.set("buyToken",  buy);
+  url.searchParams.set("sellAmount", amountRaw);
   url.searchParams.set("slippagePercentage", (slippageBps || DEFAULT_SLIPPAGE_BPS) / 10000);
   const r = await fetch(url.toString(), { timeout: 12000 });
   if (!r.ok) throw new Error(`0x ${r.status}: ${await r.text()}`);
   const data = await r.json();
-  return { source: "0x", ...data };
+  return { source: "0x", sellAmount: data.sellAmount, buyAmount: data.buyAmount };
 }
 
-// ---- PancakeSwap v2 fallback ----
-async function quoteViaPCS({ fromToken, toToken, amount }) {
+// ---------- PancakeSwap v2 (fallback) ----------
+async function quoteViaPCSv2({ sell, buy, amount }) {
   const provider = new ethers.providers.JsonRpcProvider(process.env.BSC_RPC);
   const router   = new ethers.Contract(PCS_V2_ROUTER, PCS_V2_ABI, provider);
 
-  // Normalize (BNB -> WBNB; GCC/SOL/etc remain addresses)
-  const sell = normalizeToken(fromToken);
-  const buy  = normalizeToken(toToken);
-
-  // Scale amount to raw units for the SELL token (auto-decimals)
   const amountRaw = await toRawAmount(provider, sell, String(amount));
 
-  // Candidate v2 paths — ordered by most likely liquidity
   const candidates = [
-    [sell, buy],             // direct (GCC->WBNB if buy=WBNB)
-    [sell, WBNB, buy],       // ensure hop through WBNB if needed
-    [sell, USDT, buy],       // via USDT
-    [sell, BTCB, buy],       // via BTCB
-    [sell, SOL, buy],        // via SOL(BEP-20)
-    [sell, SOL, WBNB],       // common 2-hop to WBNB
-    [sell, USDT, WBNB],      // extra safety
-    [sell, BTCB, WBNB]       // extra safety
+    [sell, buy],           // direct
+    [sell, WBNB, buy],
+    [sell, USDT, buy],
+    [sell, BTCB, buy],
+    [sell, SOL,  buy],
+    [sell, SOL,  WBNB],
+    [sell, USDT, WBNB],
+    [sell, BTCB, WBNB]
   ];
 
   for (const path of candidates) {
     try {
       const out = await router.getAmountsOut(ethers.BigNumber.from(amountRaw), path);
-      const buyAmount = out[out.length - 1].toString();
-      if (buyAmount !== "0") {
-        return {
-          source: "pcs_v2",
-          sellAmount: amountRaw,
-          buyAmount,
-          path
-        };
+      const outAmt = out[out.length - 1].toString();
+      if (outAmt !== "0") {
+        return { source: "pcs_v2", sellAmount: amountRaw, buyAmount: outAmt, path };
       }
-    } catch (e) {
-      // ignore and try next path
-    }
+    } catch { /* try next */ }
   }
 
   throw new Error("PCS v2: no route across candidate paths or amount too small");
 }
 
-// ---- unified quote (aliases for path robustness) ----
+// ---------- Unified Quote ----------
 async function handleQuote(req, res) {
   try {
     const { fromToken, toToken, amount, slippageBps } = req.body || {};
-    const sellToken = normalizeToken(fromToken);
-    const buyToken  = normalizeToken(toToken);
-    if (!sellToken || !buyToken || !amount) {
+    const sell = normalize(fromToken);
+    const buy  = normalize(toToken);
+    if (!sell || !buy || !amount) {
       return res.status(400).json({ error: "fromToken, toToken, amount are required" });
     }
 
+    // Try 0x first
     let q;
     try {
-      q = await quoteVia0x({
-        fromToken: sellToken, toToken: buyToken,
-        amount: String(amount),
-        slippageBps: Number(slippageBps || DEFAULT_SLIPPAGE_BPS)
-      });
+      const provider = new ethers.providers.JsonRpcProvider(process.env.BSC_RPC);
+      const amountRaw = await toRawAmount(provider, sell, String(amount));
+      q = await quoteVia0x({ sell, buy, amountRaw, slippageBps });
     } catch (e0) {
-      console.error("0x quote failed:", e0.message);
+      // Fallback to PCS v2
       try {
-        q = await quoteViaPCS({ fromToken: sellToken, toToken: buyToken, amount: String(amount) });
+        q = await quoteViaPCSv2({ sell, buy, amount: String(amount) });
       } catch (ePcs) {
-        console.error("PCS quote failed:", ePcs.message);
-        return res.status(502).json({
-          error: "no_route",
-          details: {
-            ox: e0 && String(e0.message || e0),
-            pcs: ePcs && String(ePcs.message || ePcs)
-          }
-        });
+        return res.status(502).json({ error: "no_route", details: { ox: String(e0?.message||""), pcs: String(ePcs?.message||"") } });
       }
     }
 
-    // reflection pad on min received (integer math)
-    const buyAmountStr = String(q.buyAmount);
-    let minBuyAmountStr;
+    // Reflection / min-received padding
+    const buyStr = String(q.buyAmount);
+    let minStr;
     try {
-      const bi = BigInt(buyAmountStr);
-      minBuyAmountStr = ((bi * BigInt(10000 - REFLECTION_PAD_BPS)) / 10000n).toString();
+      const bi = BigInt(buyStr);
+      minStr = ((bi * BigInt(10000 - REFLECTION_PAD_BPS)) / 10000n).toString();
     } catch {
-      minBuyAmountStr = String(Math.floor(Number(buyAmountStr) * (1 - REFLECTION_PAD_BPS/10000)));
+      minStr = String(Math.floor(Number(buyStr) * (1 - REFLECTION_PAD_BPS / 10000)));
     }
 
     res.json({
       source: q.source,
-      sellToken, buyToken,
-      sellAmount: String(q.sellAmount || amount),
-      buyAmount: buyAmountStr,
-      minBuyAmount: minBuyAmountStr,
+      sellToken: sell,
+      buyToken: buy,
+      sellAmount: String(q.sellAmount),
+      buyAmount: buyStr,
+      minBuyAmount: minStr,
       slippageBps: Number(slippageBps || DEFAULT_SLIPPAGE_BPS),
       at: Date.now()
     });
   } catch (err) {
-    console.error("Quote endpoint error:", err);
-    res.status(502).json({ error: "Quote backend failure", details: err.message });
+    return res.status(502).json({ error: "internal", details: String(err.message || err) });
   }
 }
 
-app.post("/api/quote/pcs", async (req, res) => {
+app.post("/api/quote", handleQuote);
+app.post("/quote", handleQuote); // alias
+
+// ---------- Debug (browser click) ----------
+app.get("/api/debug/token", async (req, res) => {
   try {
-    const { fromToken, toToken, amount } = req.body || {};
-    const sellToken = normalizeToken(fromToken);
-    const buyToken  = normalizeToken(toToken);
-
-    if (!sellToken || !buyToken || !amount) {
-      return res.status(400).json({ error: "fromToken, toToken, amount required" });
-    }
-    if (!process.env.BSC_RPC) {
-      return res.status(503).json({ error: "BSC_RPC missing" });
-    }
-
-    console.log("🔎 PCS TEST", { sellToken, buyToken, amount });
-    const q = await quoteViaPCS({ fromToken: sellToken, toToken: buyToken, amount: String(amount) });
-    return res.json(q);
-  } catch (err) {
-    console.error("PCS_TEST_ERR:", err);
-    return res.status(502).json({ error: "pcs_test_failed", details: String(err.message || err) });
+    const addr = String(req.query.addr||"").trim();
+    const p = new ethers.providers.JsonRpcProvider(process.env.BSC_RPC);
+    const t = new ethers.Contract(addr, ERC20_ABI, p);
+    const [dec, sym] = await Promise.all([t.decimals(), t.symbol()]);
+    res.json({ address: addr, decimals: Number(dec), symbol: sym });
+  } catch (e) {
+    res.status(500).json({ error:"token_debug_failed", details:String(e.message||e) });
   }
 });
 
-app.post("/api/quote", handleQuote);
-app.post("/quote", handleQuote);
+app.get("/api/debug/pair", async (req, res) => {
+  try {
+    const a = String(req.query.a||"").trim();
+    const b = String(req.query.b||"").trim();
+    const p = new ethers.providers.JsonRpcProvider(process.env.BSC_RPC);
+    const f = new ethers.Contract(PCS_V2_FACTORY, FACTORY_ABI, p);
+    const pair = await f.getPair(a, b);
+    if (pair === ethers.constants.AddressZero) return res.json({ exists:false, pair });
+    const c = new ethers.Contract(pair, PAIR_ABI, p);
+    const [token0, token1] = await Promise.all([c.token0(), c.token1()]);
+    const [r0,r1] = await c.getReserves();
+    res.json({ exists:true, pair, token0, token1, reserves:{ reserve0:r0.toString(), reserve1:r1.toString() }});
+  } catch (e) {
+    res.status(500).json({ error:"pair_debug_failed", details:String(e.message||e) });
+  }
+});
 
-// ---- crash guards ----
+app.get("/api/debug/quote-gcc-wbnb", async (_req, res) => {
+  try {
+    const p = new ethers.providers.JsonRpcProvider(process.env.BSC_RPC);
+    const r = new ethers.Contract(PCS_V2_ROUTER, PCS_V2_ABI, p);
+    const amountIn = ethers.utils.parseUnits("1", 18); // 1 GCC
+    const out = await r.getAmountsOut(amountIn, [GCC, WBNB]);
+    res.json({ source:"direct_pcs_v2", sellAmount: amountIn.toString(), buyAmount: out[1].toString(), path:[GCC,WBNB] });
+  } catch (e) {
+    res.status(502).json({ error:"direct_quote_failed", details:String(e.message||e) });
+  }
+});
+
+// ---------- Start ----------
 process.on("uncaughtException", e => console.error("❌ Uncaught", e));
 process.on("unhandledRejection", e => console.error("❌ UnhandledRejection", e));
-
-app.listen(PORT, () => console.log(`✅ SafeSwap backend running on :${PORT}`));
+app.listen(PORT, () => console.log(`✅ SafeSwap backend on :${PORT}`));
