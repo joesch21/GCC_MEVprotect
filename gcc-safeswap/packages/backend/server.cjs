@@ -12,6 +12,7 @@ const GCC_BEP20 = "0x092ac429b9c3450c9909433eb0662c3b7c13cf9a";
 const WBNB      = "0xbb4Cdb9CBd36B01bD1cBaEBF2De08d9173bc095c";
 const USDT      = "0x55d398326f99059fF775485246999027B3197955";
 const BTCB      = "0x7130d2A12B9BCbFAe4f2634d864A1Ee1Ce3Ead9c"; // BTCB on BNB Chain
+const SOL       = "0x22ADBeC2ce1022060b2abe12A168B5AC0416dd6B"; // SOL (BEP-20) on BNB Chain
 
 const PCS_V2_ROUTER = "0x10ED43C718714eb63d5aA57B78B54704E256024E";
 
@@ -69,6 +70,15 @@ function looksLikeHumanAmount(str) {
   }
 }
 
+const _decimalsCache = new Map();
+async function getDecimals(provider, tokenAddress) {
+  if (_decimalsCache.has(tokenAddress)) return _decimalsCache.get(tokenAddress);
+  const erc20 = new ethers.Contract(tokenAddress, ERC20_ABI, provider);
+  const dec = await erc20.decimals();
+  _decimalsCache.set(tokenAddress, dec);
+  return dec;
+}
+
 async function toRawAmount(provider, tokenAddress, amountStr) {
   try {
     if (!/[.]/.test(amountStr) && BigInt(amountStr) > 1000000000000n) {
@@ -76,8 +86,7 @@ async function toRawAmount(provider, tokenAddress, amountStr) {
     }
   } catch {}
 
-  const erc20 = new ethers.Contract(tokenAddress, ERC20_ABI, provider);
-  const dec = await erc20.decimals();
+  const dec = await getDecimals(provider, tokenAddress);
   const raw = ethers.utils.parseUnits(amountStr, dec);
   return raw.toString();
 }
@@ -96,21 +105,27 @@ async function quoteVia0x({ fromToken, toToken, amount, slippageBps }) {
 }
 
 // ---- PancakeSwap v2 fallback ----
-async function quoteViaPCS({ fromToken, toToken, amount /* may be human or raw */ }) {
+async function quoteViaPCS({ fromToken, toToken, amount }) {
   const provider = new ethers.providers.JsonRpcProvider(process.env.BSC_RPC);
   const router   = new ethers.Contract(PCS_V2_ROUTER, PCS_V2_ABI, provider);
 
+  // Normalize (BNB -> WBNB; GCC/SOL/etc remain addresses)
   const sell = normalizeToken(fromToken);
   const buy  = normalizeToken(toToken);
 
-  // Ensure amount is in raw units of the sell token
+  // Scale amount to raw units for the SELL token (auto-decimals)
   const amountRaw = await toRawAmount(provider, sell, String(amount));
 
+  // Candidate v2 paths — ordered by most likely liquidity
   const candidates = [
-    [sell, buy],
-    [sell, USDT, buy],
-    [sell, BTCB, buy],
-    [sell, WBNB, buy]
+    [sell, buy],             // direct (GCC->WBNB if buy=WBNB)
+    [sell, WBNB, buy],       // ensure hop through WBNB if needed
+    [sell, USDT, buy],       // via USDT
+    [sell, BTCB, buy],       // via BTCB
+    [sell, SOL, buy],        // via SOL(BEP-20)
+    [sell, SOL, WBNB],       // common 2-hop to WBNB
+    [sell, USDT, WBNB],      // extra safety
+    [sell, BTCB, WBNB]       // extra safety
   ];
 
   for (const path of candidates) {
@@ -126,7 +141,7 @@ async function quoteViaPCS({ fromToken, toToken, amount /* may be human or raw *
         };
       }
     } catch (e) {
-      // continue to next path
+      // ignore and try next path
     }
   }
 
