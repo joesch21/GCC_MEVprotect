@@ -5,6 +5,7 @@ import SwapCard from './components/SwapCard.tsx';
 import DebugDrawer from './components/DebugDrawer.jsx';
 import WalletUnlockModal from './components/WalletUnlockModal.jsx';
 import SettingsDrawer from './components/SettingsDrawer.jsx';
+import { WalletConnect } from './components/WalletConnect.tsx';
 import useShieldStatus from './hooks/useShieldStatus.js';
 import { ServerSigner } from './lib/serverSigner.js';
 import { getBrowserProvider } from './lib/ethers.js';
@@ -18,14 +19,16 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [logsOpen, setLogsOpen] = useState(false);
 
+  async function refreshAccount() {
+    try {
+      const prov = getBrowserProvider();
+      const acc = await prov.send('eth_accounts', []);
+      setAccount(acc?.[0] || null);
+    } catch {}
+  }
+
   useEffect(() => {
-    (async () => {
-      try {
-        const prov = getBrowserProvider();
-        const acc = await prov.send('eth_accounts', []);
-        if (acc?.[0]) setAccount(acc[0]);
-      } catch {}
-    })();
+    (async () => { await refreshAccount(); })();
 
     if (!window.ethereum) return;
     const onAccountsChanged = a => setAccount(a?.[0] || '');
@@ -47,6 +50,7 @@ export default function App() {
         <TopBar account={account} />
         <main className="main">
           <section className="left">
+            <WalletConnect onConnected={refreshAccount} />
             <SwapCard
               account={account}
               setAccount={setAccount}

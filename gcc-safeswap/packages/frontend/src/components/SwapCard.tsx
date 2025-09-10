@@ -1,6 +1,7 @@
 import React from 'react';
 import SafeSwap from './SafeSwap.jsx';
 import { connectInjected, connectCondor } from '../lib/wallet';
+import { isMetaMaskEnv, isCondorEnv } from '../lib/walletDetect';
 
 interface SwapCardProps {
   account: string | null;
@@ -28,12 +29,20 @@ export default function SwapCard({ account, setAccount, onToggleLogs }: SwapCard
     }
   }
 
+  const hasMetaMask = isMetaMaskEnv();
+  const hasCondor = isCondorEnv();
+  const canConnect = hasMetaMask || hasCondor;
+
   return (
     <div className="card">
-      {!account && (
+      {!account && canConnect && (
         <div className="form-row" style={{ justifyContent: 'space-between' }}>
-          <button className="btn" onClick={connectHere}>Connect MetaMask</button>
-          <button className="btn ghost" onClick={connectCondorWallet}>Connect Condor</button>
+          {hasMetaMask && (
+            <button className="btn" onClick={connectHere}>Connect MetaMask</button>
+          )}
+          {hasCondor && (
+            <button className="btn ghost" onClick={connectCondorWallet}>Connect Condor</button>
+          )}
         </div>
       )}
 
