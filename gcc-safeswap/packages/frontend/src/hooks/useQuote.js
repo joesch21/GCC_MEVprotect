@@ -1,4 +1,5 @@
 import { toBase } from "../lib/format.js";
+import { API_BASE } from "../lib/apiBase.js";
 
 export default function useQuote({ chainId=56 }) {
   async function fetch0x({ fromToken, toToken, amountBase, taker, slippageBps }) {
@@ -6,7 +7,7 @@ export default function useQuote({ chainId=56 }) {
       chainId:String(chainId), sellToken:fromToken.address, buyToken:toToken.address,
       sellAmount:amountBase, taker, slippageBps:String(slippageBps)
     });
-    const r = await fetch(`/api/0x/quote?${qs}`); const j = await r.json();
+    const r = await fetch(`${API_BASE}/api/0x/quote?${qs}`); const j = await r.json();
     if (j.code || j.error) throw new Error(j.validationErrors?.[0]?.reason || j.error || "0x quote failed");
     const sources = (j.route?.fills?.map(f=>f.source).join(" → ")) || "mixed";
     return { buyAmount:j.buyAmount, tx:{to:j.to, data:j.data, value:j.value}, routeText:sources, lpLabel:null, impact:false, allowanceTarget:j.allowanceTarget };
@@ -14,9 +15,9 @@ export default function useQuote({ chainId=56 }) {
 
   async function fetchApe({ fromToken, toToken, amountBase }) {
     const rp = new URLSearchParams({ sellToken: fromToken.address, buyToken: toToken.address });
-    const route = await (await fetch(`/api/apeswap/route?${rp}`)).json();
+    const route = await (await fetch(`${API_BASE}/api/apeswap/route?${rp}`)).json();
     const qp = new URLSearchParams({ sellToken: fromToken.address, buyToken: toToken.address, amountIn: amountBase });
-    const out = await (await fetch(`/api/apeswap/amountsOut?${qp}`)).json();
+    const out = await (await fetch(`${API_BASE}/api/apeswap/amountsOut?${qp}`)).json();
     if (out.error) throw new Error(out.error);
     const path = route.path || out.path || [fromToken.address, toToken.address];
     const sym = (a)=>a.toLowerCase();

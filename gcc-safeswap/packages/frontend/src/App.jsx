@@ -7,6 +7,7 @@ import { ServerSigner } from './lib/serverSigner.js';
 import { getBrowserProvider } from './lib/ethers.js';
 import LogTail from "./components/LogTail.jsx";
 import SettingsDrawer from './components/SettingsDrawer.jsx';
+import PerformanceMode from './components/PerformanceMode.jsx';
 
 export default function App() {
   const [perfMode, setPerfMode] = useState(() => localStorage.getItem("perfMode") === "1");
@@ -84,11 +85,7 @@ export default function App() {
             <a href="/swap" className="pill pill--accent">Swap</a>
           </nav>
           <div className="nav__right">
-              {false && (
-                <button className="btn" onClick={togglePerf} aria-pressed={perfMode}>
-                  {perfMode ? "Performance Mode: ON" : "Performance Mode: OFF"}
-                </button>
-              )}
+              {false && <PerformanceMode perfMode={perfMode} toggle={togglePerf} />}
             <Portfolio account={activeAccount} />
             <button className="btn" aria-label="Settings" onClick={() => setSettingsOpen(true)}>
               ⚙️ Settings

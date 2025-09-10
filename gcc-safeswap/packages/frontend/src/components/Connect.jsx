@@ -2,8 +2,7 @@ import React, { useEffect, useState } from "react";
 import { getBrowserProvider } from "../lib/ethers.js";
 import useBalances from "../hooks/useBalances.js";
 import TOKENS from "../lib/tokens-bsc.js";
-import { isMobile, addNetworkDeepLink } from "../lib/metamask.js";
-import { openMetaMaskDapp } from "../lib/deeplink.js";
+import { isMobile, addNetworkDeepLink, dappDeepLink } from "../lib/metamask.js";
 import useGccUsd from "../hooks/useGccUsd.js";
 
 export default function Connect({ unlockedAddr }) {
@@ -101,7 +100,7 @@ export default function Connect({ unlockedAddr }) {
           <button onClick={connect}>Connect MetaMask</button>
           {isMobile() && !window.ethereum && (
             <>
-              <button className="btn" onClick={() => openMetaMaskDapp(window.location.origin)}>Open in MetaMask</button>
+              <a className="btn" href={dappDeepLink(window.location.origin)}>Open in MetaMask</a>
               <a className="btn" href={addNetworkDeepLink()}>Add Private RPC</a>
             </>
           )}

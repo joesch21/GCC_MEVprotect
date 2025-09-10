@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import DropZone from './DropZone.jsx';
 import Fingerprint from './Fingerprint.jsx';
+import { API_BASE } from '../lib/apiBase.js';
 
 export default function WalletUnlockModal({ open, onClose, onUnlocked, onUseForSigning, onDestroy }) {
   const [file, setFile] = useState(null);
@@ -20,7 +21,7 @@ export default function WalletUnlockModal({ open, onClose, onUnlocked, onUseForS
     const form = new FormData();
     form.append('image', file);
     form.append('passphrase', pass);
-    const resp = await fetch('/api/wallet/unlock', { method: 'POST', body: form });
+    const resp = await fetch(`${API_BASE}/api/wallet/unlock`, { method: 'POST', body: form });
     const data = await resp.json();
     if (!resp.ok || data.error) {
       setMsg(data.error || 'error');
@@ -38,7 +39,7 @@ export default function WalletUnlockModal({ open, onClose, onUnlocked, onUseForS
 
   const destroy = async () => {
     if (wallet) {
-      await fetch('/api/wallet/destroy', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ sessionId: wallet.sessionId }) });
+      await fetch(`${API_BASE}/api/wallet/destroy`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ sessionId: wallet.sessionId }) });
     }
     setWallet(null);
     setFile(null);
