@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { ethers, BrowserProvider, Contract } from 'ethers';
 import { TOKENS, uiToQuoteAddress, CHAIN_BSC } from '../lib/tokens';
-import { apiGet, oxQuote, dexQuote } from '../lib/api';
+import { api } from '../lib/api';
 import { fromBase, toBase } from '../lib/format';
 import { log, clearLogs } from '../lib/logger.js';
 import useAllowance from '../hooks/useAllowance.js';
-import { API_BASE } from '../lib/apiBase.js';
 import TokenSelect from './TokenSelect.jsx';
 
 let inflight;
@@ -18,7 +17,6 @@ export default function SafeSwap({ account, serverSigner }) {
   const [amount, setAmount] = useState('');
   const [quote, setQuote] = useState(null);
   const [status, setStatus] = useState('');
-  const [route, setRoute] = useState('');
   // slippage in basis points (default 2%)
   const [slippageBps, setSlip] = useState(200);
   const [swapping, setSwapping] = useState(false);
@@ -62,18 +60,17 @@ export default function SafeSwap({ account, serverSigner }) {
         slippageBps: String(slippageBps)
       };
 
+      const url = api(`dex/quote?chainId=${CHAIN_ID}&sellToken=${baseParams.sellToken}&buyToken=${baseParams.buyToken}&sellAmount=${sellAmount}&taker=${account}&slippageBps=${slippageBps}`);
+      const r = await fetch(url);
+      const text = await r.text();
+      let j;
       try {
-        setStatus('Fetching 0x…');
-        const q0x = await oxQuote(baseParams);
-        setQuote({ type: '0x', ...q0x });
-        setRoute('0x');
-      } catch (e) {
-        log('0x fail', e.message);
-        setStatus('0x unavailable, trying DEX…');
-        const qdex = await dexQuote(baseParams);
-        setQuote({ type: 'dex', ...qdex });
-        setRoute('DEX');
+        j = JSON.parse(text);
+      } catch {
+        log(`QUOTE HTML/ERR: ${text}`);
+        throw new Error('Quote parsing failed');
       }
+      setQuote(j);
       setLastParams(baseParams);
       setStatus('Quote ready');
     } catch (e) {
@@ -114,12 +111,17 @@ export default function SafeSwap({ account, serverSigner }) {
       const signer = await prov.getSigner();
       const fromAddr = await signer.getAddress();
 
-      const qs = new URLSearchParams({ ...lastParams, taker: fromAddr }).toString();
-      const build = await apiGet(`/api/dex/buildTx?${qs}`);
-      const { tx, quote: q, source } = build;
-      const allowanceTarget = source === '0x'
-        ? (q.allowanceTarget || q.allowanceTargetAddress || tx.to)
-        : (q.router || tx.to);
+      let tx, allowanceTarget;
+      if (quote.source === 'DEX') {
+        const minOut = (BigInt(quote.buyAmount) * BigInt(10_000 - slippageBps) / 10_000n).toString();
+        const route = { router: quote.router, path: quote.path, amountIn: lastParams.sellAmount, minOut, to: fromAddr, deadline: Math.floor(Date.now()/1000) + 600 };
+        tx = await fetch(api('dex/buildTx'), { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({ route }) }).then(r=>r.json());
+        allowanceTarget = quote.router;
+      } else {
+        const q = quote.data;
+        tx = { to: q.to, data: q.data, value: q.value };
+        allowanceTarget = q.allowanceTarget || q.allowanceTargetAddress || q.to;
+      }
       if (!from.isNative) await ensureAllowance(allowanceTarget);
       const fee = await window.ethereum.request({ method: 'eth_estimateGas', params: [tx] }).catch(()=>null);
       setGas(fee);
@@ -145,18 +147,23 @@ export default function SafeSwap({ account, serverSigner }) {
     clearLogs();
     try {
       const fromAddr = await serverSigner.getAddress();
-      const qs = new URLSearchParams({ ...lastParams, taker: fromAddr }).toString();
-      const build = await apiGet(`/api/dex/buildTx?${qs}`);
-      const { tx, quote: q, source } = build;
-      const allowanceTarget = source === '0x'
-        ? (q.allowanceTarget || q.allowanceTargetAddress || tx.to)
-        : (q.router || tx.to);
+      let tx, allowanceTarget;
+      if (quote.source === 'DEX') {
+        const minOut = (BigInt(quote.buyAmount) * BigInt(10_000 - slippageBps) / 10_000n).toString();
+        const route = { router: quote.router, path: quote.path, amountIn: lastParams.sellAmount, minOut, to: fromAddr, deadline: Math.floor(Date.now()/1000) + 600 };
+        tx = await fetch(api('dex/buildTx'), { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({ route }) }).then(r=>r.json());
+        allowanceTarget = quote.router;
+      } else {
+        const q = quote.data;
+        tx = { to: q.to, data: q.data, value: q.value };
+        allowanceTarget = q.allowanceTarget || q.allowanceTargetAddress || q.to;
+      }
       if (!from.isNative) {
         await ensureServerAllowance({ tokenAddr: from.address, owner: fromAddr, spender: allowanceTarget, amount: toBase(amount || '0', from.decimals), approveMax: true, serverSigner });
       }
       setStatus('Sending (server signer)...');
       const rawTx = await serverSigner.signTransaction({ ...tx, chainId: 56 });
-      const resp = await fetch(`${API_BASE}/api/relay/sendRaw`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ rawTx }) });
+      const resp = await fetch(api('relay/sendRaw'), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ rawTx }) });
       const j = await resp.json();
       if (!resp.ok || j.error) throw new Error(j.error || 'relay failed');
       setStatus(`Broadcasted: ${j.txHash || 'sent'}`);
@@ -235,7 +242,7 @@ export default function SafeSwap({ account, serverSigner }) {
       )}
       {quote && (
         <div className="quote">
-          {quote.type === 'dex' ? (
+          {quote.source === 'DEX' ? (
             <>
               <div className="badge">DEX</div>
               <div>Buy Amount: ~{fromBase(quote.buyAmount, to.decimals)} {to.symbol}</div>
@@ -244,7 +251,7 @@ export default function SafeSwap({ account, serverSigner }) {
             <>
               <div className="badge">0x</div>
               <div>Buy Amount: ~{fromBase(quote.buyAmount, to.decimals)} {to.symbol}</div>
-              <div>Route: {quote.route?.fills?.map(f=>f.source).join(' → ') || 'aggregated'}</div>
+              <div>Route: {quote.data?.route?.fills?.map(f=>f.source).join(' → ') || 'aggregated'}</div>
             </>
           )}
           <div className="muted">

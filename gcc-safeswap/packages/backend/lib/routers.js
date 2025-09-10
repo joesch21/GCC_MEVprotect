@@ -1,34 +1,23 @@
-const { Interface, Contract } = require('ethers');
+const { ethers } = require("ethers");
 
-const PANCAKE_IFACE = new Interface([
-  'function swapExactTokensForTokens(uint amountIn,uint amountOutMin,address[] path,address to,uint deadline)',
-  'function getAmountsOut(uint amountIn,address[] path) view returns (uint[] amounts)'
-]);
+const chainId = Number(process.env.CHAIN_ID || 56);
+const PUBLIC_RPC = process.env.PUBLIC_RPC || process.env.RPC_URL_PUBLIC;
+const provider = new ethers.JsonRpcProvider(PUBLIC_RPC, chainId);
 
-function makeRouter(provider, addr) {
-  return new Contract(addr, PANCAKE_IFACE, provider);
-}
+const addrl = s => (s || "").toLowerCase();
 
-function normalizeToken(symbolOrAddr, { WBNB }) {
-  if (!symbolOrAddr) return '';
-  const s = symbolOrAddr.toLowerCase();
-  if (s === 'bnb') return WBNB;
-  return symbolOrAddr;
-}
-
-async function quoteViaRouter({ routerAddr, provider, amountIn, path }) {
-  const router = makeRouter(provider, routerAddr);
-  const amounts = await router.getAmountsOut(amountIn, path);
+function getTokens() {
   return {
-    router: routerAddr,
-    path,
-    amounts,
-    buyAmount: amounts[amounts.length - 1].toString(),
-    sellAmount: amounts[0].toString(),
+    GCC: addrl(process.env.GCC_ADDRESS),
+    WBNB: addrl(process.env.WBNB_ADDRESS),
+    USDT: addrl(process.env.USDT_ADDRESS || process.env.TOKEN_USDT || ""),
+  };
+}
+function getRouters() {
+  return {
+    PANCAKE: addrl(process.env.PANCAKE_ROUTER),
+    APESWAP: addrl(process.env.APESWAP_ROUTER),
   };
 }
 
-module.exports = {
-  normalizeToken,
-  quoteViaRouter,
-};
+module.exports = { provider, getRouters, getTokens };

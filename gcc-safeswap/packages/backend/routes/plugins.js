@@ -1,4 +1,5 @@
-module.exports = (app, env) => {
-  const { summarize } = require('../config/env');
-  app.get('/api/plugins/_health', (_,res)=> res.json({ ok:true, config: summarize() }));
-};
+const router = require("express").Router();
+
+router.get("/health", (_req,res)=> res.json({ ok: true }));
+
+module.exports = router;
