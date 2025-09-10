@@ -1,54 +1,50 @@
-module.exports = (app, env) => {
-  const { ethers } = require('ethers');
-  const provider = new ethers.JsonRpcProvider(env.PUBLIC_RPC);
+const express = require('express');
+const { ethers } = require('ethers');
+const { normalizeToken, quoteViaRouter } = require('../lib/routers');
 
-  const ROUTERS = {
-    PANCAKE: env.PANCAKE_ROUTER,
-    APESWAP: env.APESWAP_ROUTER || null,
-  };
-  const TOKENS = {
-    GCC: env.TOKEN_GCC,
-    WBNB: env.TOKEN_WBNB,
-    USDT: env.TOKEN_USDT
-  };
-  const HOPS = env.DEFAULT_HOPS.split(',').map(h => h.trim()).filter(Boolean).map(h => TOKENS[h]);
+const router = express.Router();
 
-  function routerFor(name){
-    const addr = ROUTERS[name];
-    if (!addr) return null;
-    return new ethers.Contract(addr, [
-      "function getAmountsOut(uint amountIn, address[] calldata path) view returns (uint[] memory)",
-      "function swapExactTokensForETHSupportingFeeOnTransferTokens(uint amountIn,uint amountOutMin,address[] calldata path,address to,uint deadline)"
-    ], provider);
-  }
+const CHAIN_ID = 56;
+const GCC = process.env.GCC_ADDRESS;
+const WBNB = process.env.WBNB_ADDRESS;
+const PANCAKE_ROUTER = process.env.PANCAKE_ROUTER;
+const APESWAP_ROUTER = process.env.APESWAP_ROUTER;
 
-  app.get('/api/dex/quote', async (req,res) => {
-    try{
-      const { sellToken, buyToken, sellAmount } = req.query;
-      const order = env.DEX_ORDER.split(',').map(s=>s.trim());
-      for (const dexName of order){
-        const router = routerFor(dexName);
-        if (!router) continue;
+const RPC_URL = process.env.RPC_URL_PRIVATE || process.env.RPC_URL_PUBLIC;
+const provider = new ethers.JsonRpcProvider(RPC_URL, CHAIN_ID);
 
-        // direct
-        try {
-          const amounts = await router.getAmountsOut(sellAmount, [sellToken, buyToken]);
-          return res.json({ chainId: env.CHAIN_ID, router: ROUTERS[dexName], path: [sellToken,buyToken], sellAmount, buyAmount: amounts.at(-1), amounts: amounts.map(a=>a.toString()) });
-        } catch {}
-
-        // hops
-        for (const hop of HOPS){
-          try{
-            if (!hop || hop.toLowerCase()===sellToken.toLowerCase() || hop.toLowerCase()===buyToken.toLowerCase()) continue;
-            const path = [sellToken, hop, buyToken];
-            const amounts = await router.getAmountsOut(sellAmount, path);
-            return res.json({ chainId: env.CHAIN_ID, router: ROUTERS[dexName], path, sellAmount, buyAmount: amounts.at(-1), amounts: amounts.map(a=>a.toString()) });
-          }catch{}
-        }
-      }
-      res.status(404).json({ error: 'No route on configured DEXes' });
-    }catch(e){
-      res.status(500).json({ error: e.message });
+router.get('/quote', async (req, res) => {
+  try {
+    const { chainId, sellToken, buyToken, sellAmount } = req.query;
+    if (String(chainId) !== String(CHAIN_ID)) {
+      return res.status(400).json({ error: 'Unsupported chainId' });
     }
-  });
-};
+    if (!sellToken || !buyToken || !sellAmount) {
+      return res.status(400).json({ error: 'Missing params' });
+    }
+
+    const sell = normalizeToken(sellToken, { WBNB });
+    const buy = normalizeToken(buyToken, { WBNB });
+    const path = [sell, buy];
+
+    const tryRouters = [PANCAKE_ROUTER, APESWAP_ROUTER].filter(Boolean);
+
+    let lastErr;
+    for (const r of tryRouters) {
+      try {
+        const q = await quoteViaRouter({ routerAddr: r, provider, amountIn: sellAmount, path });
+        return res.json({ chainId: CHAIN_ID, dex: r, ...q });
+      } catch (err) {
+        lastErr = err;
+      }
+    }
+
+    return res
+      .status(404)
+      .json({ error: 'No route on configured DEXes', detail: String(lastErr?.reason || lastErr?.message || lastErr) });
+  } catch (e) {
+    return res.status(500).json({ error: 'DEX quote error', detail: String(e?.message || e) });
+  }
+});
+
+module.exports = router;

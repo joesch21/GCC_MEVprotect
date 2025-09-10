@@ -4,6 +4,12 @@ const { str, num } = envalid;
 const raw = { ...process.env };
 if (raw.RPC_URL_PUBLIC && !raw.PUBLIC_RPC) raw.PUBLIC_RPC = raw.RPC_URL_PUBLIC;
 if (raw.RPC_URL_PRIVATE && !raw.PRIVATE_RPC) raw.PRIVATE_RPC = raw.RPC_URL_PRIVATE;
+// allow both LEGACY token vars and new *\_ADDRESS variants
+if (raw.GCC_ADDRESS && !raw.TOKEN_GCC) raw.TOKEN_GCC = raw.GCC_ADDRESS;
+if (raw.TOKEN_GCC && !raw.GCC_ADDRESS) raw.GCC_ADDRESS = raw.TOKEN_GCC;
+if (raw.WBNB_ADDRESS && !raw.TOKEN_WBNB) raw.TOKEN_WBNB = raw.WBNB_ADDRESS;
+if (raw.TOKEN_WBNB && !raw.WBNB_ADDRESS) raw.WBNB_ADDRESS = raw.TOKEN_WBNB;
+Object.assign(process.env, raw);
 
 const env = envalid.cleanEnv(raw, {
   NODE_ENV:      str({ default: 'development' }),
@@ -19,6 +25,8 @@ const env = envalid.cleanEnv(raw, {
   TOKEN_GCC:     str(),
   TOKEN_WBNB:    str(),
   TOKEN_USDT:    str(),
+  GCC_ADDRESS:   str(),
+  WBNB_ADDRESS:  str(),
 
   PANCAKE_ROUTER: str(),
   APESWAP_ROUTER: str({ default: '' }),

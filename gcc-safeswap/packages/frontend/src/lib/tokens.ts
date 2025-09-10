@@ -24,7 +24,7 @@ export const TOKENS = {
 } as const;
 
 export function uiToQuoteAddress(symbol: string): string {
-  if (symbol === "BNB") return TOKENS.WBNB.address;
+  if (symbol === "BNB") return "BNB";
   return TOKENS[symbol as keyof typeof TOKENS]?.address || "";
 }
 
