@@ -13,7 +13,12 @@ export default function usePlugins() {
         const r = await fetch(`${API_BASE}/api/plugins/_health`);
         const j = await r.json();
         if (!alive) return;
-        const items = (j.plugins || []).map((p) => ({
+        const pluginList = (j.plugins || []).filter(
+          (p) =>
+            import.meta.env.VITE_ENABLE_CONDOR_WALLET === 'true' ||
+            p.name !== 'condor-wallet'
+        );
+        const items = pluginList.map((p) => ({
           name: p.name,
           ...(PLUGIN_META[p.name] || {
             title: p.name,
