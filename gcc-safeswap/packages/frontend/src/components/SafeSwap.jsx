@@ -1,10 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { ethers, BrowserProvider, Contract } from 'ethers';
 import { TOKENS, CHAIN_BSC } from '../lib/tokens';
-import { api, getQuote as fetchQuote } from '../lib/api';
+import { getQuote as fetchQuote, buildApproveTx, buildSwapTx } from '../lib/api';
 import { fromBase, toBase } from '../lib/format';
 import { logInfo, logError, logWarn, clearLogs } from '../lib/logger.js';
-import useAllowance from '../hooks/useAllowance.js';
 import TokenSelect from './TokenSelect.jsx';
 
 let inflight;
@@ -16,7 +15,7 @@ function isPositive(x) {
   return Number.isFinite(n) && n > 0;
 }
 
-export default function SafeSwap({ account, serverSigner }) {
+export default function SafeSwap({ account }) {
   const [fromSym, setFromSym] = useState('BNB');
   const [toSym, setToSym] = useState('GCC');
   const from = TOKENS[fromSym];
@@ -27,10 +26,8 @@ export default function SafeSwap({ account, serverSigner }) {
   // slippage in basis points (default 2%)
   const [slippageBps, setSlip] = useState(200);
   const [swapping, setSwapping] = useState(false);
-  const [gas, setGas] = useState(null);
   const [networkOk, setNetworkOk] = useState(true);
   const [lastParams, setLastParams] = useState(null);
-  const { ensure: ensureServerAllowance } = useAllowance();
 
   const CHAIN_ID = CHAIN_BSC;
   const REFLECTION_SET = new Set(['0x092ac429b9c3450c9909433eb0662c3b7c13cf9a']);
@@ -55,7 +52,6 @@ export default function SafeSwap({ account, serverSigner }) {
     try {
       setStatus('Fetching quote…');
       setQuote(null);
-      setGas(null);
       clearLogs();
       logInfo("UI: GetQuote clicked", { seq, fromToken: fromSym, toToken: toSym, amount, slippageBps });
 
@@ -75,7 +71,7 @@ export default function SafeSwap({ account, serverSigner }) {
       setLastParams({ sellAmount });
       setStatus('Quote ready');
       window.refreshPortfolioValue?.();
-    } catch (e) {
+  } catch (e) {
       if (seq !== quoteSeq) return;
       const msg = String(e?.message || e);
       logError("UI: Quote FAILED", { seq, err: msg });
@@ -84,98 +80,49 @@ export default function SafeSwap({ account, serverSigner }) {
     }
   }
 
-  async function ensureAllowance(allowanceTarget) {
-    if (from.isNative) return true;
-    if (!allowanceTarget) throw new Error('Missing allowance target');
-    const prov = new BrowserProvider(window.ethereum);
-    const signer = await prov.getSigner();
-    const erc20 = new Contract(from.address, [
-      'function allowance(address owner, address spender) view returns (uint256)',
-      'function approve(address spender, uint256 value) returns (bool)'
-    ], signer);
-    const owner = await signer.getAddress();
-    const cur = await erc20.allowance(owner, allowanceTarget);
-    const sellAmount = toBase(amount || '0', from.decimals);
-    if (cur >= sellAmount) return true;
-    setStatus('Approving token allowance…');
-    const tx = await erc20.approve(allowanceTarget, ethers.MaxUint256);
-    await tx.wait();
-    return true;
-  }
-
-  async function swapMetaMaskPrivate() {
-    if (!quote || !lastParams) { setStatus('Get a quote first'); return; }
-    if (!window.ethereum) {
-      window.location.href = `https://metamask.app.link/dapp/${window.location.host}`;
-      return;
-    }
-
+  async function onSwap() {
     setSwapping(true);
-    clearLogs();
-    try{
-      const prov = new BrowserProvider(window.ethereum);
-      const signer = await prov.getSigner();
-      const fromAddr = await signer.getAddress();
-
-      let tx, allowanceTarget;
-      if (quote.source === 'DEX') {
-        const minOut = (BigInt(quote.buyAmount) * BigInt(10_000 - slippageBps) / 10_000n).toString();
-        const route = { router: quote.router, path: quote.path, amountIn: lastParams.sellAmount, minOut, to: fromAddr, deadline: Math.floor(Date.now()/1000) + 600 };
-        tx = await fetch(api('dex/buildTx'), { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({ route }) }).then(r=>r.json());
-        allowanceTarget = quote.router;
-      } else {
-        const q = quote.data;
-        tx = { to: q.to, data: q.data, value: q.value };
-        allowanceTarget = q.allowanceTarget || q.allowanceTargetAddress || q.to;
-      }
-      if (!from.isNative) await ensureAllowance(allowanceTarget);
-      const fee = await window.ethereum.request({ method: 'eth_estimateGas', params: [tx] }).catch(()=>null);
-      setGas(fee);
-      setStatus('Sending (private RPC)...');
-      const sent = await signer.sendTransaction(tx);
-      setStatus(`Sent: ${sent.hash}`);
-      const rec = await sent.wait();
-      setStatus(`Confirmed in block ${rec.blockNumber}`);
-      logInfo('RECEIPT', rec);
-    } catch(e) {
-      console.error(e);
-      const msg = e?.shortMessage || e?.reason || e?.message || String(e);
-      setStatus(`Swap failed: ${msg}`);
-      logError('SWAP ERROR', e);
-    } finally {
-      setSwapping(false);
-    }
-  }
-
-  async function swapServerSigner() {
-    if (!quote || !lastParams) { setStatus('Get a quote first'); return; }
-    setSwapping(true);
-    clearLogs();
     try {
-      const fromAddr = await serverSigner.getAddress();
-      let tx, allowanceTarget;
-      if (quote.source === 'DEX') {
-        const minOut = (BigInt(quote.buyAmount) * BigInt(10_000 - slippageBps) / 10_000n).toString();
-        const route = { router: quote.router, path: quote.path, amountIn: lastParams.sellAmount, minOut, to: fromAddr, deadline: Math.floor(Date.now()/1000) + 600 };
-        tx = await fetch(api('dex/buildTx'), { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({ route }) }).then(r=>r.json());
-        allowanceTarget = quote.router;
-      } else {
-        const q = quote.data;
-        tx = { to: q.to, data: q.data, value: q.value };
-        allowanceTarget = q.allowanceTarget || q.allowanceTargetAddress || q.to;
+      if (!quote) return;
+      const fromToken = quote.sellToken;
+      const toToken   = quote.buyToken;
+      const amountIn  = quote.sellAmount;
+      const minOut    = quote.minBuyAmount;
+      const router    = quote.router;
+
+      if (String(fromToken).toUpperCase() !== "BNB") {
+        const appr = await buildApproveTx({ token: fromToken, owner: account, spender: router, amount: amountIn });
+        if (appr.needed) {
+          logInfo("Approve needed", appr);
+          const txHash = await window.ethereum.request({
+            method: "eth_sendTransaction",
+            params: [{ from: account, to: appr.tx.to, data: appr.tx.data, value: appr.tx.value }]
+          });
+          logInfo("Approve tx sent", { txHash });
+        } else {
+          logInfo("Approve not needed");
+        }
       }
-      if (!from.isNative) {
-        await ensureServerAllowance({ tokenAddr: from.address, owner: fromAddr, spender: allowanceTarget, amount: toBase(amount || '0', from.decimals), approveMax: true, serverSigner });
-      }
-      setStatus('Sending (server signer)...');
-      const rawTx = await serverSigner.signTransaction({ ...tx, chainId: 56 });
-      const resp = await fetch(api('relay/sendRaw'), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ rawTx }) });
-      const j = await resp.json();
-      if (!resp.ok || j.error) throw new Error(j.error || 'relay failed');
-      setStatus(`Broadcasted: ${j.txHash || 'sent'}`);
+
+      const swap = await buildSwapTx({
+        fromToken,
+        toToken,
+        amountIn,
+        minAmountOut: minOut,
+        recipient: account
+      });
+
+      const swapHash = await window.ethereum.request({
+        method: "eth_sendTransaction",
+        params: [{ from: account, to: swap.tx.to, data: swap.tx.data, value: swap.tx.value }]
+      });
+      logInfo("Swap tx sent", { swapHash });
+
+      window.showToast?.("Swap submitted");
+      setTimeout(() => window.refreshPortfolioValue?.(), 12_000);
     } catch (e) {
-      const msg = e?.shortMessage || e?.reason || e?.message || String(e);
-      setStatus(`Swap failed: ${msg}`);
+      logError("Swap failed", String(e?.message || e));
+      setStatus("Swap failed — " + String(e?.message || e));
     } finally {
       setSwapping(false);
     }
@@ -262,18 +209,9 @@ export default function SafeSwap({ account, serverSigner }) {
         className="primary"
         disabled={!quote || swapping || !networkOk}
         aria-busy={swapping}
-        onClick={swapMetaMaskPrivate}>
-        {swapping ? 'Swapping…' : 'Swap (MetaMask • Private RPC)'}
+        onClick={onSwap}>
+        {swapping ? 'Swapping…' : 'Swap'}
       </button>
-      {serverSigner && (
-        <button
-          className="primary"
-          disabled={!quote || swapping || !networkOk}
-          aria-busy={swapping}
-          onClick={swapServerSigner}>
-          {swapping ? 'Swapping…' : 'Swap (Server Signer)'}
-        </button>
-      )}
     </>
   );
 }

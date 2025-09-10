@@ -69,6 +69,12 @@ export default function Portfolio({ account }) {
     return () => { delete window.refreshPortfolioValue; };
   }, [gccWei, bnbWei, account]);
 
+  useEffect(() => {
+    refreshPortfolioValue();
+    const id = setInterval(refreshPortfolioValue, 60_000);
+    return () => clearInterval(id);
+  }, []);
+
   const onConnect = async () => {
     if (account) return;
     try {

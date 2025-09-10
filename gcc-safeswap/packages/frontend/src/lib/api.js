@@ -41,6 +41,24 @@ export async function getQuote({ fromToken, toToken, amount, slippageBps }) {
   });
 }
 
+export async function buildApproveTx({ token, owner, spender, amount }) {
+  const url = smartJoin(BASE, "/api/tx/approve");
+  return await fetchJSON(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token, owner, spender, amount: String(amount) })
+  });
+}
+
+export async function buildSwapTx({ fromToken, toToken, amountIn, minAmountOut, recipient }) {
+  const url = smartJoin(BASE, "/api/tx/swap");
+  return await fetchJSON(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ fromToken, toToken, amountIn: String(amountIn), minAmountOut: String(minAmountOut), recipient })
+  });
+}
+
 export async function health() {
   const url = smartJoin(BASE, "/api/plugins/health");
   return await fetchJSON(url);
