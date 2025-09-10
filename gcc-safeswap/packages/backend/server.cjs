@@ -1,14 +1,18 @@
 require('dotenv').config();
 const { env, summarize } = require('./config/env');
 const express = require('express');
-const cors = require('cors');
+let helmetMiddleware = () => (req,res,next)=>next();
+try { helmetMiddleware = require('helmet'); } catch {}
 const rateLimit = require('express-rate-limit');
+const { originGuard } = require('./middleware/originGuard');
+const { refreshRegistry } = require('./mev/registry');
 
 const app = express();
-app.use(cors({ origin: '*', methods: ['GET','POST'], allowedHeaders: ['Content-Type','Authorization'] }));
-app.use((_,res,next)=>{ res.setHeader('x-robots-tag','noindex'); next(); });
 app.use(express.json({ limit: '1mb' }));
-app.use(rateLimit({ windowMs: 60_000, max: 120, standardHeaders: true }));
+app.use(helmetMiddleware());
+app.use(rateLimit({ windowMs: 60_000, max: 60, standardHeaders: true }));
+app.use(originGuard);
+app.use((_,res,next)=>{ res.setHeader('x-robots-tag','noindex'); next(); });
 
 console.log('[env] loaded:', summarize());
 
@@ -19,6 +23,9 @@ console.log('[env] loaded:', summarize());
     process.exit(1);
   }
 });
+
+refreshRegistry();
+setInterval(refreshRegistry, 5 * 60 * 1000);
 
 function reqLog(req, res, next) {
   const t0 = Date.now();

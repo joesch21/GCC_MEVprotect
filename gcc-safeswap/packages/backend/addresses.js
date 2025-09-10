@@ -1,6 +1,6 @@
 const ADDR = {
   // Tokens
-  GCC:  process.env.GCC_TOKEN_ADDRESS  || "0x092aC429b9c3450c9909433eB0662c3b7c13cF9A",
+  GCC:  process.env.GCC_TOKEN_ADDRESS  || process.env.GCC_ADDRESS || "0x092aC429b9c3450c9909433eB0662c3b7c13cF9A",
   WBNB: process.env.WBNB_ADDRESS       || "0xBB4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c",
   BTCB: process.env.BTCB_ADDRESS       || "0x7130d2A12B9BCbFAe4f2634d864A1Ee1Ce3Ead9c",
   USDT: process.env.USDT_ADDRESS       || "0x55d398326f99059fF775485246999027B3197955",
@@ -14,7 +14,7 @@ const ADDR = {
   APEBOND_ROUTER:  process.env.APEBOND_ROUTER_ADDRESS || "0xC0788A3aD43d79aa53B09c2EaCc313A787d1d607",
 
   // Private RPC (MEV-shield)
-  PRIVATE_RPC_URL: process.env.PRIVATE_RPC_URL || "https://bscrpc.pancakeswap.finance"
+  PRIVATE_RPC_URL: process.env.PRIVATE_RPC_URL || process.env.RPC_URL_PRIVATE || "https://bscrpc.pancakeswap.finance",
 };
 
 module.exports = { ADDR };

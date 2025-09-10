@@ -1,7 +1,11 @@
 const envalid = require('envalid');
 const { str, num } = envalid;
 
-const env = envalid.cleanEnv(process.env, {
+const raw = { ...process.env };
+if (raw.RPC_URL_PUBLIC && !raw.PUBLIC_RPC) raw.PUBLIC_RPC = raw.RPC_URL_PUBLIC;
+if (raw.RPC_URL_PRIVATE && !raw.PRIVATE_RPC) raw.PRIVATE_RPC = raw.RPC_URL_PRIVATE;
+
+const env = envalid.cleanEnv(raw, {
   NODE_ENV:      str({ default: 'development' }),
   PORT:          num({ default: 8787 }),
   ALLOWED_ORIGINS: str({ default: 'http://localhost:5173' }),
