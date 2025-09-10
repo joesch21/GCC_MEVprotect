@@ -1,23 +1,7 @@
-import React, { useState } from 'react';
-import { connectInjected, ensureBscMainnet, metamaskDeepLink } from '../lib/wallet';
+import React from 'react';
 
-export default function AppHeader({ openSettings, toggleLogs }) {
-  const [account, setAccount] = useState(null);
-
-  async function onConnectBrowser() {
-    try {
-      const acc = await connectInjected();
-      await ensureBscMainnet();
-      setAccount(acc);
-    } catch (e) {
-      console.info(String(e));
-    }
-  }
-
-  const onConnectMobile = () => {
-    window.open(metamaskDeepLink(), '_blank');
-  };
-
+export default function AppHeader({ openSettings, account }) {
+  
   return (
     <header className="header">
       <div className="brand">
@@ -29,18 +13,8 @@ export default function AppHeader({ openSettings, toggleLogs }) {
         <button className="btn ghost" onClick={openSettings}>
           <i className="icon-settings" /> Settings
         </button>
-        <button className="btn ghost" onClick={toggleLogs}>
-          <i className="icon-terminal" /> Show Logs
-        </button>
         <div className="divider" />
-        {!account ? (
-          <div className="connect-row">
-            <button className="btn" onClick={onConnectBrowser}>Connect MetaMask</button>
-            <button className="btn ghost" onClick={onConnectMobile}>Open in MetaMask App</button>
-          </div>
-        ) : (
-          <WalletChip address={account} />
-        )}
+        {account && <WalletChip address={account} />}
       </div>
     </header>
   );

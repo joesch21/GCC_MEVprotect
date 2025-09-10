@@ -42,13 +42,14 @@ export default function App() {
       <div className="shell">
         <AppHeader
           openSettings={() => setSettingsOpen(true)}
-          toggleLogs={() => setLogsOpen(v => !v)}
+          account={account}
         />
         <TopBar />
         <main className="main">
           <section className="left">
             <SwapCard
-              onOpenSettings={() => setSettingsOpen(true)}
+              account={account}
+              setAccount={setAccount}
               onToggleLogs={() => setLogsOpen(v => !v)}
             />
           </section>
