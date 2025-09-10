@@ -21,6 +21,14 @@ const PCS_V2_ABI = [
 const DEFAULT_SLIPPAGE_BPS = 300; // 3%
 const REFLECTION_PAD_BPS   = 200; // ~2% extra min-received pad
 
+console.log("🛠️ SAFE-BOOT",
+  JSON.stringify({
+    NODE: process.version,
+    HAS_BSC_RPC: Boolean(process.env.BSC_RPC),
+    PORT: process.env.PORT
+  })
+);
+
 app.use(cors());
 app.use(express.json());
 app.use(morgan("tiny"));
@@ -28,6 +36,15 @@ app.use(morgan("tiny"));
 // ---- Health (aliases) ----
 app.get(["/api/plugins/health", "/plugins/health", "/health"], (_req, res) => {
   res.json({ status: "ok", ts: Date.now() });
+});
+
+app.post("/api/_debug/echo", (req, res) => {
+  res.json({
+    ok: true,
+    headers: req.headers,
+    body: req.body,
+    hasBscRpc: Boolean(process.env.BSC_RPC)
+  });
 });
 
 // ---- helpers ----
@@ -99,7 +116,13 @@ async function handleQuote(req, res) {
         q = await quoteViaPCS({ fromToken: sellToken, toToken: buyToken, amount: String(amount) });
       } catch (ePcs) {
         console.error("PCS quote failed:", ePcs.message);
-        return res.status(502).json({ error: "No route from aggregators", details: e0.message || ePcs.message });
+        return res.status(502).json({
+          error: "no_route",
+          details: {
+            ox: e0 && String(e0.message || e0),
+            pcs: ePcs && String(ePcs.message || ePcs)
+          }
+        });
       }
     }
 
@@ -127,6 +150,28 @@ async function handleQuote(req, res) {
     res.status(502).json({ error: "Quote backend failure", details: err.message });
   }
 }
+
+app.post("/api/quote/pcs", async (req, res) => {
+  try {
+    const { fromToken, toToken, amount } = req.body || {};
+    const sellToken = normalizeToken(fromToken);
+    const buyToken  = normalizeToken(toToken);
+
+    if (!sellToken || !buyToken || !amount) {
+      return res.status(400).json({ error: "fromToken, toToken, amount required" });
+    }
+    if (!process.env.BSC_RPC) {
+      return res.status(503).json({ error: "BSC_RPC missing" });
+    }
+
+    console.log("🔎 PCS TEST", { sellToken, buyToken, amount });
+    const q = await quoteViaPCS({ fromToken: sellToken, toToken: buyToken, amount: String(amount) });
+    return res.json(q);
+  } catch (err) {
+    console.error("PCS_TEST_ERR:", err);
+    return res.status(502).json({ error: "pcs_test_failed", details: String(err.message || err) });
+  }
+});
 
 app.post("/api/quote", handleQuote);
 app.post("/quote", handleQuote);
