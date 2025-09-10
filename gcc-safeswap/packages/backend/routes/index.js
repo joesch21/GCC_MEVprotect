@@ -2,7 +2,6 @@ const { txGuard } = require('../middleware/txGuard');
 const { mevGuard } = require('../middleware/mevGuard');
 
 module.exports = (app, env) => {
-  require('./dex')(app, env);
   require('./0x')(app, env);
   require('./plugins')(app, env);
 

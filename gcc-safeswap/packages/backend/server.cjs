@@ -17,7 +17,7 @@ app.use((_,res,next)=>{ res.setHeader('x-robots-tag','noindex'); next(); });
 console.log('[env] loaded:', summarize());
 
 // Basic sanity checks
-['PUBLIC_RPC','TOKEN_GCC','TOKEN_WBNB','PANCAKE_ROUTER'].forEach(k=>{
+['PUBLIC_RPC','GCC_ADDRESS','WBNB_ADDRESS','PANCAKE_ROUTER'].forEach(k=>{
   if (!env[k]) {
     console.error(`[env] Missing required: ${k}`);
     process.exit(1);
@@ -52,7 +52,8 @@ app.get('/health', (_req, res) => {
   res.json({ ok: true, ts: Date.now() });
 });
 
-// mount routes (0x, dex, plugins, etc.)
+// mount routes
+app.use('/api/dex', require('./routes/dex'));
 require('./routes')(app, env);
 
 app.listen(env.PORT, () => {
