@@ -3,6 +3,7 @@ const { ethers } = require('ethers');
 const { normalizeToken, quoteViaRouter } = require('../lib/routers');
 
 const router = express.Router();
+const log = console;
 
 const CHAIN_ID = 56;
 const GCC = process.env.GCC_ADDRESS;
@@ -33,8 +34,10 @@ router.get('/quote', async (req, res) => {
     for (const r of tryRouters) {
       try {
         const q = await quoteViaRouter({ routerAddr: r, provider, amountIn: sellAmount, path });
+        log.info('DEX QUOTE', { router: r, path, amounts: q.amounts.map(a=>a.toString()) });
         return res.json({ chainId: CHAIN_ID, dex: r, ...q });
       } catch (err) {
+        log.error('DEX QUOTE ERR', { router: r, msg: err.message });
         lastErr = err;
       }
     }
