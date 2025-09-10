@@ -15,11 +15,12 @@ function logWarn(msg, obj)  { console.warn(`[${t()}] ${msg}`, obj ?? ""); }
 function logErr (msg, obj)  { console.error(`[${t()}] ${msg}`, obj ?? ""); }
 
 // ---------- Constants ----------
+// ==== canonical lowercase addresses (BNB Chain) ====
 const GCC  = "0x092ac429b9c3450c9909433eb0662c3b7c13cf9a";
-const WBNB = "0xbb4Cdb9CBd36B01bD1cBaEBF2De08d9173bc095c";
-const USDT = "0x55d398326f99059fF775485246999027B3197955";
-const BTCB = "0x7130d2A12B9BCbFAe4f2634d864A1Ee1Ce3Ead9c";
-const SOL  = "0x22ADBeC2ce1022060b2abe12A168B5AC0416dd6B"; // bridged SOL on BNB
+const WBNB = "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c";
+const USDT = "0x55d398326f99059ff775485246999027b3197955";
+const BTCB = "0x7130d2a12b9bcbfae4f2634d864a1ee1ce3ead9c";
+const SOL  = "0x22adbec2ce1022060b2abe12a168b5ac0416dd6b"; // bridged SOL on BNB
 
 const PCS_V2_ROUTER  = "0x10ED43C718714eb63d5aA57B78B54704E256024E";
 const PCS_V2_FACTORY = "0xCA143Ce32Fe78f1f7019d7d551a6402fC5350c73";
@@ -71,12 +72,23 @@ async function toRawAmount(provider, tokenAddr, amountStr) {
   return raw.toString();
 }
 
+function isHexAddress(s) {
+  return /^0x[0-9a-fA-F]{40}$/.test(String(s || "").trim());
+}
+
 function normalize(token) {
-  const s = String(token || "").trim();
-  if (!s) return null;
-  if (s.toUpperCase() === "GCC") return GCC;
-  if (s.toUpperCase() === "BNB") return WBNB; // use WBNB for quoting
-  return s; // assume address
+  const raw = String(token || "").trim();
+  if (!raw) return null;
+
+  const U = raw.toUpperCase();
+  if (U === "GCC") return GCC;
+  if (U === "BNB") return WBNB;          // quote via WBNB
+
+  // If it looks like an address, return canonical lowercase
+  if (isHexAddress(raw)) return raw.toLowerCase();
+
+  // Otherwise leave as-is (e.g., future symbol routing)
+  return raw;
 }
 
 // ---------- 0x (primary) ----------

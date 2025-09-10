@@ -23,13 +23,18 @@ async function fetchJSON(url, init) {
   }
 }
 
+function toLowerIfAddr(s) {
+  return /^0x[0-9a-fA-F]{40}$/.test(String(s)) ? s.toLowerCase() : s;
+}
+
 export async function getQuote({ fromToken, toToken, amount, slippageBps }) {
   const url = smartJoin(BASE, "/api/quote");
   return await fetchJSON(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      fromToken, toToken,
+      fromToken: toLowerIfAddr(fromToken),
+      toToken:   toLowerIfAddr(toToken),
       amount: String(amount),
       slippageBps: slippageBps ?? 300
     })
