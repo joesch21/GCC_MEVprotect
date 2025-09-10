@@ -1,6 +1,6 @@
 import React from 'react';
 import SafeSwap from './SafeSwap.jsx';
-import { connectInjected, ensureBscMainnet, metamaskDeepLink, connectCondor, getCondorProvider } from '../lib/wallet';
+import { connectInjected, connectCondor } from '../lib/wallet';
 
 interface SwapCardProps {
   account: string | null;
@@ -9,13 +9,10 @@ interface SwapCardProps {
 }
 
 export default function SwapCard({ account, setAccount, onToggleLogs }: SwapCardProps) {
-  const eth = typeof window !== "undefined" ? window.ethereum : undefined;
-  const condor = typeof window !== "undefined" ? window.condor ?? undefined : undefined;
 
   async function connectHere() {
     try {
       const acc = await connectInjected();
-      await ensureBscMainnet();
       setAccount(acc);
     } catch (e) {
       /* no-op */
@@ -25,7 +22,6 @@ export default function SwapCard({ account, setAccount, onToggleLogs }: SwapCard
   async function connectCondorWallet() {
     try {
       const acc = await connectCondor();
-      await ensureBscMainnet(getCondorProvider() || condor || eth);
       setAccount(acc);
     } catch (e) {
       /* no-op */
@@ -37,9 +33,6 @@ export default function SwapCard({ account, setAccount, onToggleLogs }: SwapCard
       {!account && (
         <div className="form-row" style={{ justifyContent: 'space-between' }}>
           <button className="btn" onClick={connectHere}>Connect MetaMask</button>
-          <button className="btn ghost" onClick={() => window.open(metamaskDeepLink(), '_blank')}>
-            Open in MetaMask App
-          </button>
           <button className="btn ghost" onClick={connectCondorWallet}>Connect Condor</button>
         </div>
       )}

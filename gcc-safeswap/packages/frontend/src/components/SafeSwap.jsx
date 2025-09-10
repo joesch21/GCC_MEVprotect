@@ -5,10 +5,8 @@ import { getQuote as fetchQuote, buildApproveTx, buildSwapTx, health as fetchHea
 import { fromBase, toBase } from '../lib/format';
 import { logInfo, logError, logWarn, clearLogs } from '../lib/logger.js';
 import TokenSelect from './TokenSelect.jsx';
-import { detectCaps } from '../lib/walletCaps';
 import { getCondorProvider } from '../lib/wallet';
-import { isPrivate } from '../lib/privateRpc';
-import { EnablePrivateRpc } from './EnablePrivateRpc.tsx';
+import { isCondorProvider } from '../lib/walletDetect';
 
 let inflight;
 let quoteSeq = 0;
@@ -35,18 +33,18 @@ function humanizeError(err) {
     return "Transaction canceled in wallet.";
   }
   if (s.includes("condor_only")) {
-    return "Private relay is available with Condor Wallet. On MetaMask, use a Private RPC instead.";
+    return "Private relay is available with Condor Wallet.";
   }
   return "Couldn’t complete that request. Please try again.";
 }
 
-async function sendWithPrivacy({ tx, account, usePrivateRelay, rpcIsPrivate }) {
+async function sendWithPrivacy({ tx, account, usePrivateRelay }) {
   if (!usePrivateRelay) {
     const hash = await window.ethereum.request({
       method: "eth_sendTransaction",
       params: [{ from: account, to: tx.to, data: tx.data, value: tx.value }],
     });
-    return { hash, via: rpcIsPrivate ? "private_rpc" : "public" };
+    return { hash, via: "public" };
   }
 
   const condor = getCondorProvider() || window.ethereum;
@@ -95,13 +93,9 @@ export default function SafeSwap({ account }) {
   const [slippageBps, setSlip] = useState(200);
   const [swapping, setSwapping] = useState(false);
   const [networkOk, setNetworkOk] = useState(true);
-  const [lastParams, setLastParams] = useState(null);
-  const [rpcLabel, setRpcLabel] = useState('');
-  const [rpcUrl, setRpcUrl] = useState('');
-  const [rpcIsPrivate, setRpcIsPrivate] = useState(isPrivate());
   const [usePrivateRelay, setUsePrivateRelay] = useState(false);
   const [relayReady, setRelayReady] = useState(false);
-  const [{ isMetaMask, isCondor }, setCaps] = useState({ isMetaMask: false, isCondor: false });
+  const [isCondor, setIsCondor] = useState(false);
 
   const CHAIN_ID = CHAIN_BSC;
   const REFLECTION_SET = new Set(['0x092ac429b9c3450c9909433eb0662c3b7c13cf9a']);
@@ -120,23 +114,11 @@ export default function SafeSwap({ account }) {
       } catch {
         setNetworkOk(false);
       }
-      const cfg = window.ethereum?._state?.providerConfig;
-      const lbl = cfg?.nickname || cfg?.chainName || '';
-      const url = cfg?.rpcUrl || '';
-      setRpcLabel(lbl);
-      setRpcUrl(url);
-      setCaps(detectCaps(window.ethereum, window));
-      setRpcIsPrivate(isPrivate());
+      setIsCondor(isCondorProvider(window.ethereum));
     }
     init();
     const onChainChanged = () => {
-      const cfg = window.ethereum?._state?.providerConfig;
-      const lbl = cfg?.nickname || cfg?.chainName || '';
-      const url = cfg?.rpcUrl || '';
-      setRpcLabel(lbl);
-      setRpcUrl(url);
-      setCaps(detectCaps(window.ethereum, window));
-      setRpcIsPrivate(isPrivate());
+      setIsCondor(isCondorProvider(window.ethereum));
     };
     window.ethereum?.on('chainChanged', onChainChanged);
     return () => window.ethereum?.removeListener('chainChanged', onChainChanged);
@@ -168,7 +150,6 @@ export default function SafeSwap({ account }) {
       }
       logInfo("UI: Quote OK", { seq, data });
       setQuote(data);
-      setLastParams({ sellAmount });
       setStatus('Quote ready');
       window.dispatchEvent(new Event("portfolio:refresh"));
   } catch (e) {
@@ -187,7 +168,7 @@ export default function SafeSwap({ account }) {
     try {
       if (!quote) return;
       if (usePrivateRelay && !canUseRelay) {
-        const msg = "Private relay is available with Condor Wallet. On MetaMask, use a Private RPC instead.";
+        const msg = "Private relay is available with Condor Wallet.";
         setStatus(msg);
         window.showToast?.(msg);
         return;
@@ -219,7 +200,7 @@ export default function SafeSwap({ account }) {
         minAmountOut: minOut,
         recipient: account
       });
-      const submit = await sendWithPrivacy({ tx: swap.tx, account, usePrivateRelay: useRelay, rpcIsPrivate });
+      const submit = await sendWithPrivacy({ tx: swap.tx, account, usePrivateRelay: useRelay });
       logInfo("Swap submitted", submit);
 
       window.showToast?.("Swap submitted");
@@ -314,21 +295,17 @@ export default function SafeSwap({ account }) {
         </div>
       )}
       {!networkOk && <div className="error">Switch to BNB Chain</div>}
-      <div className="row" style={{marginTop:8}}>
-        {isMetaMask ? (
-          <>
-            {!rpcIsPrivate && <div className="badge">Public RPC</div>}
-            <EnablePrivateRpc isCondor={isCondor} isMetaMask={isMetaMask} onEnabled={() => setRpcIsPrivate(true)} />
-          </>
-        ) : canUseRelay ? (
+      {isCondor && canUseRelay ? (
+        <div className="relayToggle" style={{marginTop:8}}>
           <label style={{display:'flex',alignItems:'center',gap:6}}>
             <input type="checkbox" checked={usePrivateRelay} onChange={e=>setUsePrivateRelay(e.target.checked)} />
-            <span>Send privately (MEV-protected) — via Condor Relay</span>
+            <span>Send privately (MEV-protected)</span>
           </label>
-        ) : (
-          <div className="badge">Public RPC</div>
-        )}
-      </div>
+          <div className="muted">Private Relay: {usePrivateRelay ? 'ON' : 'OFF'} (MEV-protected)</div>
+        </div>
+      ) : (
+        <div className="muted" style={{marginTop:8}}>Private routing is available in Condor Wallet.</div>
+      )}
       {isCondor && canUseRelay && (
         <div className="muted" style={{marginTop:4}}>
           Condor Advantage: Transactions are submitted privately via relay to avoid public mempool exposure.
