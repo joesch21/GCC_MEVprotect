@@ -112,7 +112,7 @@ export default function App() {
       <main>
         <section id="swap" className="holo">
           <div className="card">
-            <SafeSwap account={activeAccount} serverSigner={signer} />
+            <SafeSwap account={activeAccount} />
           </div>
         </section>
       </main>

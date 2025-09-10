@@ -22,11 +22,23 @@ const USDT = "0x55d398326f99059ff775485246999027b3197955";
 const BTCB = "0x7130d2a12b9bcbfae4f2634d864a1ee1ce3ead9c";
 const SOL  = "0x22adbec2ce1022060b2abe12a168b5ac0416dd6b"; // bridged SOL on BNB
 
-const PCS_V2_ROUTER  = "0x10ED43C718714eb63d5aA57B78B54704E256024E";
-const PCS_V2_FACTORY = "0xCA143Ce32Fe78f1f7019d7d551a6402fC5350c73";
+const PCS_V2_ROUTER  = "0x10ed43c718714eb63d5aa57b78b54704e256024e";
+const PCS_V2_FACTORY = "0xca143ce32fe78f1f7019d7d551a6402fc5350c73";
 
-const ERC20_ABI   = ["function decimals() view returns (uint8)","function symbol() view returns (string)"];
-const PCS_V2_ABI  = ["function getAmountsOut(uint amountIn, address[] calldata path) view returns (uint[] memory)"];
+const ERC20_ABI = [
+  "function decimals() view returns (uint8)",
+  "function symbol() view returns (string)",
+  "function allowance(address owner, address spender) view returns (uint256)",
+  "function approve(address spender, uint256 value) returns (bool)"
+];
+
+const PCS_V2_ABI = [
+  "function getAmountsOut(uint amountIn, address[] calldata path) view returns (uint[] memory amounts)",
+  // swaps (supporting fee-on-transfer)
+  "function swapExactTokensForTokensSupportingFeeOnTransferTokens(uint amountIn, uint amountOutMin, address[] calldata path, address to, uint deadline)",
+  "function swapExactTokensForETHSupportingFeeOnTransferTokens(uint amountIn, uint amountOutMin, address[] calldata path, address to, uint deadline)",
+  "function swapExactETHForTokensSupportingFeeOnTransferTokens(uint amountOutMin, address[] calldata path, address to, uint deadline) payable"
+];
 const FACTORY_ABI = ["function getPair(address,address) view returns (address)"];
 const PAIR_ABI    = [
   "function token0() view returns (address)",
@@ -191,6 +203,7 @@ async function handleQuote(req, res) {
       buyAmount: buyStr,
       minBuyAmount: minStr,
       slippageBps: Number(slippageBps || DEFAULT_SLIPPAGE_BPS),
+      router: q.source === "pcs_v2" ? PCS_V2_ROUTER : undefined,
       at: Date.now()
     };
 
@@ -204,6 +217,94 @@ async function handleQuote(req, res) {
 
 app.post("/api/quote", handleQuote);
 app.post("/quote", handleQuote); // alias
+
+// ---------- Build Approve Tx ----------
+app.post("/api/tx/approve", async (req, res) => {
+  try {
+    const { token, owner, spender, amount } = req.body || {};
+    if (!token || !owner || !spender || !amount) {
+      return res.status(400).json({ error: "token, owner, spender, amount required" });
+    }
+    const p = new ethers.providers.JsonRpcProvider(process.env.BSC_RPC);
+    const t = new ethers.Contract(String(token).toLowerCase(), ERC20_ABI, p);
+    const allowance = await t.allowance(owner, spender);
+
+    const need = ethers.BigNumber.from(String(amount));
+    if (allowance.gte(need)) {
+      return res.json({ ok: true, needed: false, allowance: allowance.toString() });
+    }
+
+    const iface = new ethers.utils.Interface(ERC20_ABI);
+    const data = iface.encodeFunctionData("approve", [
+      spender,
+      ethers.constants.MaxUint256
+    ]);
+
+    return res.json({
+      ok: true,
+      needed: true,
+      tx: {
+        to: String(token).toLowerCase(),
+        data,
+        value: "0x0"
+      },
+      allowance: allowance.toString()
+    });
+  } catch (e) {
+    return res.status(502).json({ error: "approve_build_failed", details: String(e.message || e) });
+  }
+});
+
+// ---------- Build Swap Tx ----------
+app.post("/api/tx/swap", async (req, res) => {
+  try {
+    const { fromToken, toToken, amountIn, minAmountOut, recipient } = req.body || {};
+    if (!fromToken || !toToken || !amountIn || !minAmountOut || !recipient) {
+      return res.status(400).json({ error: "fromToken,toToken,amountIn,minAmountOut,recipient required" });
+    }
+
+    const sell = String(fromToken).toLowerCase() === "bnb" ? WBNB : String(fromToken).toLowerCase();
+    const buy  = String(toToken).toLowerCase()   === "bnb" ? WBNB : String(toToken).toLowerCase();
+
+    const iface   = new ethers.utils.Interface(PCS_V2_ABI);
+    const path    = [sell, buy];
+    const router  = PCS_V2_ROUTER;
+    const deadline = Math.floor(Date.now()/1000) + 60*20; // 20 min
+
+    let method, data, value = "0x0";
+
+    const sellingNative = (String(fromToken).toUpperCase() === "BNB");
+    const receivingNative = (String(toToken).toUpperCase() === "BNB");
+
+    if (sellingNative) {
+      method = "swapExactETHForTokensSupportingFeeOnTransferTokens";
+      data   = iface.encodeFunctionData(method, [ minAmountOut, path, recipient, deadline ]);
+      value  = ethers.BigNumber.from(String(amountIn)).toHexString();
+    } else if (receivingNative) {
+      method = "swapExactTokensForETHSupportingFeeOnTransferTokens";
+      data   = iface.encodeFunctionData(method, [ amountIn, minAmountOut, path, recipient, deadline ]);
+      value  = "0x0";
+    } else {
+      method = "swapExactTokensForTokensSupportingFeeOnTransferTokens";
+      data   = iface.encodeFunctionData(method, [ amountIn, minAmountOut, path, recipient, deadline ]);
+      value  = "0x0";
+    }
+
+    return res.json({
+      ok: true,
+      router,
+      method,
+      path,
+      tx: {
+        to: router,
+        data,
+        value
+      }
+    });
+  } catch (e) {
+    return res.status(502).json({ error: "swap_build_failed", details: String(e.message || e) });
+  }
+});
 
 app.get("/api/pricebook", async (_req, res) => {
   try {
