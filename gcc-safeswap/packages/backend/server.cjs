@@ -5,7 +5,8 @@ const cors = require('cors');
 const rateLimit = require('express-rate-limit');
 
 const app = express();
-app.use(cors({ origin: env.ALLOWED_ORIGINS.split(',') }));
+app.use(cors({ origin: '*', methods: ['GET','POST'], allowedHeaders: ['Content-Type','Authorization'] }));
+app.use((_,res,next)=>{ res.setHeader('x-robots-tag','noindex'); next(); });
 app.use(express.json({ limit: '1mb' }));
 app.use(rateLimit({ windowMs: 60_000, max: 120, standardHeaders: true }));
 
