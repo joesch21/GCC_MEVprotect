@@ -1,15 +1,16 @@
 import React from 'react';
-import SafeSwap from './SafeSwap.jsx';
-import { connectInjected, connectCondor } from '../lib/wallet';
-import { isMetaMaskEnv, isCondorEnv } from '../lib/walletDetect';
+import SafeSwap from './SafeSwap';
+import { connectInjected } from '../lib/wallet';
+import { isMetaMaskEnv } from '../lib/walletDetect';
 
 interface SwapCardProps {
   account: string | null;
   setAccount: React.Dispatch<React.SetStateAction<string | null>>;
   onToggleLogs: () => void;
+  condor?: any;
 }
 
-export default function SwapCard({ account, setAccount, onToggleLogs }: SwapCardProps) {
+export default function SwapCard({ account, setAccount, onToggleLogs, condor }: SwapCardProps) {
 
   async function connectHere() {
     try {
@@ -20,18 +21,8 @@ export default function SwapCard({ account, setAccount, onToggleLogs }: SwapCard
     }
   }
 
-  async function connectCondorWallet() {
-    try {
-      const acc = await connectCondor();
-      setAccount(acc);
-    } catch (e) {
-      /* no-op */
-    }
-  }
-
   const hasMetaMask = isMetaMaskEnv();
-  const hasCondor = isCondorEnv();
-  const canConnect = hasMetaMask || hasCondor;
+  const canConnect = hasMetaMask;
 
   return (
     <div className="card">
@@ -40,9 +31,6 @@ export default function SwapCard({ account, setAccount, onToggleLogs }: SwapCard
           {hasMetaMask && (
             <button className="btn" onClick={connectHere}>Connect MetaMask</button>
           )}
-          {hasCondor && (
-            <button className="btn ghost" onClick={connectCondorWallet}>Connect Condor</button>
-          )}
         </div>
       )}
 
@@ -50,7 +38,7 @@ export default function SwapCard({ account, setAccount, onToggleLogs }: SwapCard
         <button className="btn ghost" onClick={onToggleLogs}>Show Logs</button>
       </div>
 
-      <SafeSwap account={account} />
+      <SafeSwap account={account} condor={condor} />
     </div>
   );
 }

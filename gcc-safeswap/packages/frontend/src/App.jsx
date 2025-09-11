@@ -18,6 +18,7 @@ export default function App() {
   const [useServer, setUseServer] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [logsOpen, setLogsOpen] = useState(false);
+  const [condorCtx, setCondorCtx] = useState(null);
 
   async function refreshAccount() {
     try {
@@ -40,6 +41,15 @@ export default function App() {
     };
   }, [refreshShield]);
 
+  function handleConnected(ctx) {
+    if (ctx?.signer) {
+      setAccount(ctx.address);
+      setCondorCtx(ctx);
+    } else {
+      refreshAccount();
+    }
+  }
+
   return (
     <>
       <div className="shell">
@@ -50,11 +60,12 @@ export default function App() {
         <TopBar account={account} />
         <main className="main">
           <section className="left">
-            <WalletConnect onConnected={refreshAccount} />
+            <WalletConnect onConnected={handleConnected} condor={condorCtx} onForget={() => { setCondorCtx(null); setAccount(null); }} />
             <SwapCard
               account={account}
               setAccount={setAccount}
               onToggleLogs={() => setLogsOpen(v => !v)}
+              condor={condorCtx}
             />
           </section>
           <aside className="right">
