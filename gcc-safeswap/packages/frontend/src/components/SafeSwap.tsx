@@ -5,8 +5,13 @@ import { getQuote as fetchQuote, buildApproveTx, buildSwapTx, health as fetchHea
 import { fromBase, toBase } from '../lib/format';
 import { logInfo, logError, logWarn, clearLogs } from '../lib/logger.js';
 import TokenSelect from './TokenSelect.jsx';
-import CondorUnlock from './CondorUnlock.tsx';
-import { isCondorEnv } from '../lib/walletDetect';
+import { sendViaPrivateRelay } from '../lib/condor/relay';
+import { CondorSigner } from '../lib/condor/signer';
+
+interface CondorCtx {
+  address: string;
+  signer: CondorSigner;
+}
 
 let inflight;
 let quoteSeq = 0;
@@ -38,8 +43,8 @@ function humanizeError(err) {
   return "Couldn’t complete that request. Please try again.";
 }
 
-async function sendWithPrivacy({ tx, account, usePrivateRelay, condor }) {
-  if (!usePrivateRelay) {
+async function sendWithPrivacy({ tx, account, usePrivateRelay, condor }: { tx: any; account: string; usePrivateRelay: boolean; condor?: CondorCtx }) {
+  if (!usePrivateRelay || !condor) {
     const hash = await window.ethereum.request({
       method: "eth_sendTransaction",
       params: [{ from: account, to: tx.to, data: tx.data, value: tx.value }],
@@ -47,37 +52,13 @@ async function sendWithPrivacy({ tx, account, usePrivateRelay, condor }) {
     return { hash, via: "public" };
   }
 
-  if (!condor?.wallet) throw new Error("Unlock Condor first");
-  const provider = condor.wallet.provider;
-  const nonce = await provider.getTransactionCount(condor.wallet.address, "latest");
-  const gasPrice = await provider.getGasPrice();
-  const est = await provider.estimateGas({
-    from: condor.wallet.address,
-    to: tx.to,
-    data: tx.data,
-    value: tx.value || "0x0",
-  });
-  const unsigned = {
-    to: tx.to,
-    data: tx.data || "0x",
-    value: tx.value || "0x0",
-    gasLimit: est.mul(120).div(100),
-    gasPrice,
-    nonce,
-    chainId: 56,
-    type: 0,
-  };
-  const raw = await condor.wallet.signTransaction(unsigned);
-  const resp = await fetch(`/api/relay/private`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ rawTx: raw }),
-  }).then((r) => r.json());
-  if (!resp?.ok) throw new Error(resp?.error || "Relay failed");
+  const unsigned = await condor.signer.buildUnsignedLegacyTx(tx.to, tx.data, tx.value);
+  const raw = await condor.signer.signRaw(unsigned);
+  const resp = await sendViaPrivateRelay(raw);
   return { hash: resp.txHash || null, via: "condor_private" };
 }
 
-export default function SafeSwap({ account }) {
+export default function SafeSwap({ account, condor }: { account: string | null; condor?: CondorCtx | null }) {
   const [fromSym, setFromSym] = useState('BNB');
   const [toSym, setToSym] = useState('GCC');
   const from = TOKENS[fromSym];
@@ -91,8 +72,6 @@ export default function SafeSwap({ account }) {
   const [networkOk, setNetworkOk] = useState(true);
   const [usePrivateRelay, setUsePrivateRelay] = useState(false);
   const [relayReady, setRelayReady] = useState(false);
-  const [isCondor, setIsCondor] = useState(false);
-  const [condor, setCondor] = useState(null);
 
   const CHAIN_ID = CHAIN_BSC;
   const REFLECTION_SET = new Set(['0x092ac429b9c3450c9909433eb0662c3b7c13cf9a']);
@@ -111,16 +90,10 @@ export default function SafeSwap({ account }) {
       } catch {
         setNetworkOk(false);
       }
-      setIsCondor(isCondorEnv());
     }
     init();
-    const onChainChanged = () => {
-      setIsCondor(isCondorEnv());
-    };
-    window.ethereum?.on('chainChanged', onChainChanged);
-    return () => window.ethereum?.removeListener('chainChanged', onChainChanged);
   }, []);
-  const canUseRelay = relayReady && isCondor;
+  const canUseRelay = relayReady && !!condor;
   const useRelay = usePrivateRelay && canUseRelay;
 
   async function onGetQuote() {
@@ -217,9 +190,15 @@ export default function SafeSwap({ account }) {
 
   async function onMax(){
     try{
-      const prov = new BrowserProvider(window.ethereum, 'any');
-      const signerAddr = (await prov.send('eth_requestAccounts', []))[0];
-      if (!signerAddr) return;
+      let prov:any; let signerAddr:string;
+      if (condor) {
+        prov = condor.signer.provider;
+        signerAddr = condor.address;
+      } else {
+        prov = new BrowserProvider(window.ethereum, 'any');
+        signerAddr = (await prov.send('eth_requestAccounts', []))[0];
+        if (!signerAddr) return;
+      }
       if (from.isNative){
         const bal = await prov.getBalance(signerAddr);
         setAmount(fromBase(bal, 18));
@@ -232,7 +211,7 @@ export default function SafeSwap({ account }) {
           erc20.balanceOf(signerAddr),
           erc20.decimals().catch(()=>from.decimals||18)
         ]);
-      setAmount(fromBase(bal, dec));
+        setAmount(fromBase(bal, dec));
       }
     }catch{}
   }
@@ -292,19 +271,18 @@ export default function SafeSwap({ account }) {
         </div>
       )}
       {!networkOk && <div className="error">Switch to BNB Chain</div>}
-      {isCondor && !condor && <CondorUnlock onReady={setCondor} />}
-      {isCondor && canUseRelay ? (
+      {condor && canUseRelay ? (
         <div className="relayToggle" style={{marginTop:8}}>
           <label style={{display:'flex',alignItems:'center',gap:6}}>
             <input type="checkbox" checked={usePrivateRelay} onChange={e=>setUsePrivateRelay(e.target.checked)} />
             <span>Send privately (MEV-protected)</span>
           </label>
-          <div className="muted">Private Relay: {usePrivateRelay ? 'ON' : 'OFF'} (MEV-protected)</div>
+          <div className="muted">Private Relay: {usePrivateRelay ? 'ON' : 'OFF'} (MEV-protected via Condor)</div>
         </div>
       ) : (
         <div className="muted" style={{marginTop:8}}>Private routing is available in Condor Wallet.</div>
       )}
-      {isCondor && canUseRelay && (
+      {condor && canUseRelay && (
         <div className="muted" style={{marginTop:4}}>
           Condor Advantage: Transactions are submitted privately via relay to avoid public mempool exposure.
         </div>
