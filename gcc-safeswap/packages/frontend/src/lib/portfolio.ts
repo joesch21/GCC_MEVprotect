@@ -1,5 +1,5 @@
 import { BrowserProvider, Contract, formatEther, formatUnits } from "ethers";
-import { getPrices } from "./pricebook";
+import { getPriceBook } from "./pricebook";
 
 const GCC = import.meta.env.VITE_TOKEN_GCC as string;
 const GCC_DECIMALS = Number(import.meta.env.VITE_GCC_DECIMALS ?? 18);
@@ -26,10 +26,12 @@ export async function computePortfolioUSD(
   provider: BrowserProvider,
   account: string
 ) {
-  const [{ bnb, gcc }, { bnbUsd, gccUsd }] = await Promise.all([
+  const [{ bnb, gcc }, pb] = await Promise.all([
     readBalances(provider, account),
-    getPrices(),
+    getPriceBook(),
   ]);
+  const bnbUsd = pb.prices?.bnbUsd ?? 0;
+  const gccUsd = pb.prices?.gccUsd ?? 0;
   const totalUsd = bnb * bnbUsd + gcc * gccUsd;
-  return { bnb, gcc, bnbUsd, gccUsd, totalUsd };
+  return { bnb, gcc, bnbUsd, gccUsd, totalUsd, stale: pb.stale };
 }
