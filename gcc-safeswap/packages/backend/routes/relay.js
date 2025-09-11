@@ -1,23 +1,31 @@
-const express = require('express');
-const router = express.Router();
+const router = require("express").Router();
+const rateLimit = require("express-rate-limit");
+const fetch = (...args) => import("node-fetch").then(({ default: f }) => f(...args));
 
-const PRIVATE_RPC_URL = process.env.PRIVATE_RPC_URL || 'https://bscrpc.pancakeswap.finance';
+router.use("/private", rateLimit({ windowMs: 60_000, max: 20 }));
 
-router.post('/sendRaw', async (req, res) => {
+router.post("/private", async (req, res) => {
+  const rawTx = req.body?.rawTx;
+  if (!rawTx || !/^0x[0-9a-fA-F]+$/.test(rawTx)) {
+    return res.status(400).json({ ok: false, error: "invalid_raw_tx" });
+  }
+
+  const RELAY_URL = process.env.RELAY_URL || "https://api.blxrbdn.com/eth/v1/tx";
+  const auth = process.env.BLXR_AUTH;
+  if (!auth) return res.status(503).json({ ok: false, error: "relay_unavailable" });
+
   try {
-    const { rawTx, rpcUrl } = req.body;
-    if (!rawTx) return res.status(400).json({ error: 'rawTx required' });
-    const url = rpcUrl || PRIVATE_RPC_URL;
-    const payload = { jsonrpc: '2.0', id: 1, method: 'eth_sendRawTransaction', params: [rawTx] };
-    const resp = await fetch(url, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(payload)
+    const r = await fetch(RELAY_URL, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: auth },
+      body: JSON.stringify({ tx: rawTx })
     });
-    const data = await resp.json();
-    res.status(resp.status).json(data);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) return res.status(502).json({ ok: false, error: "relay_failed", details: j });
+    const txHash = j.txHash || j.result?.txHash || j.hash || null;
+    return res.json({ ok: true, txHash, relay: j });
+  } catch (e) {
+    return res.status(502).json({ ok: false, error: "relay_failed", details: String(e) });
   }
 });
 
