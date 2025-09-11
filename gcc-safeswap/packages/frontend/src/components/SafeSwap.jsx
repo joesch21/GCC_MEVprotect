@@ -232,9 +232,15 @@ export default function SafeSwap({ account }) {
           erc20.balanceOf(signerAddr),
           erc20.decimals().catch(()=>from.decimals||18)
         ]);
-      setAmount(fromBase(bal, dec));
+        setAmount(fromBase(bal, dec));
       }
-    }catch{}
+    }catch(e){
+      if (e?.code === 4001 || /rejected/i.test(String(e?.message))) {
+        // user rejected
+      } else {
+        console.error('Wallet error', e);
+      }
+    }
   }
 
   const involvesReflection = (!from.isNative && REFLECTION_SET.has(from.address.toLowerCase())) ||

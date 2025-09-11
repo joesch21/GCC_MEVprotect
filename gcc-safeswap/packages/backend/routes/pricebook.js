@@ -1,48 +1,77 @@
-const router = require("express").Router();
-const fetch = (...args) => import("node-fetch").then(({ default: f }) => f(...args));
+const router = require('express').Router();
+const fetch = (...args) => import('node-fetch').then(({ default: f }) => f(...args));
 
-let cache = null;
-let ts = 0;
-const TTL = 60_000;
+const PAIR_ID = process.env.DEXSCREENER_GCC_WBNB;
+const TTL = Number(process.env.PRICEBOOK_TTL_SEC || 60) * 1000;
+const TIMEOUT = Number(process.env.PRICEBOOK_UPSTREAM_TIMEOUT_MS || 4000);
 
-router.get("/", async (_req, res) => {
+let cache = null; // { at: number, data: PriceBook }
+
+async function getJson(url, timeoutMs) {
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), timeoutMs);
   try {
-    if (cache && Date.now() - ts < TTL) return res.json(cache);
+    const res = await fetch(url, {
+      signal: ctl.signal,
+      headers: { 'user-agent': 'gcc-safeswap/pricebook' },
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+  } finally {
+    clearTimeout(t);
+  }
+}
 
-    const GCC = (process.env.TOKEN_GCC || "").toLowerCase();
-    const WBNB = (process.env.TOKEN_WBNB || "").toLowerCase();
-    const pair = (process.env.PAIR_GCC_WBNB || "").toLowerCase();
-    if (!pair) return res.status(500).json({ error: "missing_pair" });
+async function fetchDexScreener() {
+  const url = `https://api.dexscreener.com/latest/dex/pairs/${PAIR_ID}`;
+  const json = await getJson(url, TIMEOUT);
+  const pair = json?.pairs?.[0];
+  if (!pair) throw new Error('No pair');
 
-    const byPair = await fetch(`https://api.dexscreener.com/latest/dex/pairs/bsc/${pair}`).then(r => r.json());
-    const p = byPair?.pair;
-    if (
-      p?.baseToken?.address?.toLowerCase() !== GCC ||
-      p?.quoteToken?.address?.toLowerCase() !== WBNB ||
-      !p?.priceNative
-    ) {
-      return res.status(502).json({ error: "pair_unpriced" });
-    }
+  const priceUsdBNB = Number(
+    pair?.baseToken?.symbol === 'WBNB' ? pair?.priceUsd : pair?.priceUsdBase
+  );
+  const priceUsdGCC = Number(
+    pair?.baseToken?.symbol === 'WBNB' ? pair?.priceUsdQuote : pair?.priceUsd
+  );
+  if (!isFinite(priceUsdBNB) || !isFinite(priceUsdGCC)) throw new Error('Bad numbers');
+  const gccBnb = priceUsdGCC / priceUsdBNB;
+  return {
+    updatedAt: new Date().toISOString(),
+    stale: false,
+    sources: ['dexscreener'],
+    prices: {
+      bnbUsd: priceUsdBNB,
+      gccBnb,
+      gccUsd: priceUsdGCC,
+    },
+  };
+}
 
-    const gccPerWbnb = Number(p.priceNative);
-
-    // WBNB → USD: prefer stable-quoted pairs
-    const wTok = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${WBNB}`).then(r => r.json());
-    const stables = new Set(["usdt", "usdc", "busd"]);
-    const stablePair = (wTok?.pairs || []).find(p =>
-      p.baseToken?.address?.toLowerCase() === WBNB &&
-      p.priceUsd &&
-      stables.has(p?.quoteToken?.symbol?.toLowerCase?.())
-    ) || (wTok?.pairs || []).find(p => p.priceUsd);
-    const wbnbUsd = Number(stablePair?.priceUsd || 0);
-
-    cache = { gccPerWbnb, wbnbUsd };
-    ts = Date.now();
-    res.json(cache);
+router.get('/', async (_req, res) => {
+  const now = Date.now();
+  if (cache && now - cache.at < TTL) {
+    console.log(JSON.stringify({ pricebook: 'cache' }));
+    return res.json(cache.data);
+  }
+  try {
+    const data = await fetchDexScreener();
+    cache = { at: now, data };
+    console.log(JSON.stringify({ pricebook: 'fresh', sources: data.sources }));
+    return res.json(data);
   } catch (e) {
-    res.status(502).json({ error: "price_fetch_failed" });
+    if (cache) {
+      console.warn(JSON.stringify({ pricebook: 'stale', error: String(e) }));
+      return res.json({ ...cache.data, stale: true });
+    }
+    console.error(JSON.stringify({ pricebook: 'empty', error: String(e) }));
+    return res.json({
+      updatedAt: new Date().toISOString(),
+      stale: true,
+      sources: [],
+      prices: { bnbUsd: 0, gccBnb: 0, gccUsd: 0 },
+    });
   }
 });
 
 module.exports = router;
-
