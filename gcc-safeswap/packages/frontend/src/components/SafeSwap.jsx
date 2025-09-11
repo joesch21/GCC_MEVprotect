@@ -5,7 +5,7 @@ import { getQuote as fetchQuote, buildApproveTx, buildSwapTx, health as fetchHea
 import { fromBase, toBase } from '../lib/format';
 import { logInfo, logError, logWarn, clearLogs } from '../lib/logger.js';
 import TokenSelect from './TokenSelect.jsx';
-import { getCondorProvider } from '../lib/wallet';
+import CondorUnlock from './CondorUnlock.tsx';
 import { isCondorEnv } from '../lib/walletDetect';
 
 let inflight;
@@ -38,7 +38,7 @@ function humanizeError(err) {
   return "Couldn’t complete that request. Please try again.";
 }
 
-async function sendWithPrivacy({ tx, account, usePrivateRelay }) {
+async function sendWithPrivacy({ tx, account, usePrivateRelay, condor }) {
   if (!usePrivateRelay) {
     const hash = await window.ethereum.request({
       method: "eth_sendTransaction",
@@ -47,38 +47,34 @@ async function sendWithPrivacy({ tx, account, usePrivateRelay }) {
     return { hash, via: "public" };
   }
 
-  const condor = getCondorProvider() || window.ethereum;
-  const provider = new BrowserProvider(condor, 'any');
-  const chainId = (await provider.getNetwork()).chainId;
-  const nonce = await provider.getTransactionCount(account, "latest");
+  if (!condor?.wallet) throw new Error("Unlock Condor first");
+  const provider = condor.wallet.provider;
+  const nonce = await provider.getTransactionCount(condor.wallet.address, "latest");
   const gasPrice = await provider.getGasPrice();
-  const gas = await provider.estimateGas({ from: account, to: tx.to, data: tx.data, value: tx.value });
-
-  const unsigned = {
+  const est = await provider.estimateGas({
+    from: condor.wallet.address,
     to: tx.to,
     data: tx.data,
-    value: ethers.BigNumber.from(tx.value || "0x0").toHexString(),
-    gas: gas.mul(120).div(100).toHexString(),
-    gasPrice: gasPrice.toHexString(),
-    nonce: ethers.hexlify(nonce),
-    chainId: Number(chainId),
+    value: tx.value || "0x0",
+  });
+  const unsigned = {
+    to: tx.to,
+    data: tx.data || "0x",
+    value: tx.value || "0x0",
+    gasLimit: est.mul(120).div(100),
+    gasPrice,
+    nonce,
+    chainId: 56,
     type: 0,
   };
-
-  const raw = await condor.request({
-    method: "eth_signTransaction",
-    params: [unsigned],
-  });
-
-  const resp = await fetch(`${import.meta.env.VITE_API_BASE}/api/relay/private`, {
+  const raw = await condor.wallet.signTransaction(unsigned);
+  const resp = await fetch(`/api/relay/private`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ rawTx: raw }),
   }).then((r) => r.json());
-
-  if (!resp?.ok) throw new Error("Private relay failed");
-
-  return { hash: resp.result?.txHash || resp.result?.hash || null, via: "condor_private" };
+  if (!resp?.ok) throw new Error(resp?.error || "Relay failed");
+  return { hash: resp.txHash || null, via: "condor_private" };
 }
 
 export default function SafeSwap({ account }) {
@@ -96,6 +92,7 @@ export default function SafeSwap({ account }) {
   const [usePrivateRelay, setUsePrivateRelay] = useState(false);
   const [relayReady, setRelayReady] = useState(false);
   const [isCondor, setIsCondor] = useState(false);
+  const [condor, setCondor] = useState(null);
 
   const CHAIN_ID = CHAIN_BSC;
   const REFLECTION_SET = new Set(['0x092ac429b9c3450c9909433eb0662c3b7c13cf9a']);
@@ -200,7 +197,7 @@ export default function SafeSwap({ account }) {
         minAmountOut: minOut,
         recipient: account
       });
-      const submit = await sendWithPrivacy({ tx: swap.tx, account, usePrivateRelay: useRelay });
+      const submit = await sendWithPrivacy({ tx: swap.tx, account, usePrivateRelay: useRelay, condor });
       logInfo("Swap submitted", submit);
 
       window.showToast?.("Swap submitted");
@@ -295,6 +292,7 @@ export default function SafeSwap({ account }) {
         </div>
       )}
       {!networkOk && <div className="error">Switch to BNB Chain</div>}
+      {isCondor && !condor && <CondorUnlock onReady={setCondor} />}
       {isCondor && canUseRelay ? (
         <div className="relayToggle" style={{marginTop:8}}>
           <label style={{display:'flex',alignItems:'center',gap:6}}>

@@ -11,31 +11,20 @@ router.get("/", async (_req, res) => {
 
     const GCC = (process.env.TOKEN_GCC || "").toLowerCase();
     const WBNB = (process.env.TOKEN_WBNB || "").toLowerCase();
-    const PAIR = (process.env.PAIR_GCC_WBNB || "").toLowerCase();
+    const pair = (process.env.PAIR_GCC_WBNB || "").toLowerCase();
+    if (!pair) return res.status(500).json({ error: "missing_pair" });
 
-    // (A) GCC per WBNB from a pinned pair
-    let gccPerWbnb = 0;
-    if (PAIR) {
-      const byPair = await fetch(`https://api.dexscreener.com/latest/dex/pairs/bsc/${PAIR}`).then(r => r.json());
-      const p = byPair?.pair;
-      if (
-        p?.baseToken?.address?.toLowerCase() === GCC &&
-        p?.quoteToken?.address?.toLowerCase() === WBNB &&
-        p?.priceNative
-      ) {
-        gccPerWbnb = Number(p.priceNative);
-      }
+    const byPair = await fetch(`https://api.dexscreener.com/latest/dex/pairs/bsc/${pair}`).then(r => r.json());
+    const p = byPair?.pair;
+    if (
+      p?.baseToken?.address?.toLowerCase() !== GCC ||
+      p?.quoteToken?.address?.toLowerCase() !== WBNB ||
+      !p?.priceNative
+    ) {
+      return res.status(502).json({ error: "pair_unpriced" });
     }
-    // (B) Fallback: token search (if PAIR not set or invalid)
-    if (!gccPerWbnb) {
-      const tok = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${GCC}`).then(r => r.json());
-      const p = (tok?.pairs || []).find(x =>
-        x.baseToken?.address?.toLowerCase() === GCC &&
-        x.quoteToken?.address?.toLowerCase() === WBNB &&
-        x.priceNative
-      );
-      gccPerWbnb = Number(p?.priceNative || 0);
-    }
+
+    const gccPerWbnb = Number(p.priceNative);
 
     // WBNB → USD: prefer stable-quoted pairs
     const wTok = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${WBNB}`).then(r => r.json());
