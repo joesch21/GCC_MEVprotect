@@ -14,7 +14,7 @@ export default function SwapCard({ account, setAccount, onToggleLogs }: SwapCard
   async function connectHere() {
     try {
       const acc = await connectInjected();
-      setAccount(acc);
+      if (acc) setAccount(acc);
     } catch (e) {
       /* no-op */
     }
@@ -23,7 +23,7 @@ export default function SwapCard({ account, setAccount, onToggleLogs }: SwapCard
   async function connectCondorWallet() {
     try {
       const acc = await connectCondor();
-      setAccount(acc);
+      if (acc) setAccount(acc);
     } catch (e) {
       /* no-op */
     }

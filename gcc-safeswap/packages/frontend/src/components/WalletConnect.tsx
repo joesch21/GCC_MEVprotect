@@ -21,6 +21,12 @@ export function WalletConnect({ onConnected }:{ onConnected:()=>void }) {
               if (!eth?.request) throw new Error("No EIP-1193 provider found");
               await eth.request({ method: "eth_requestAccounts" });
               onConnected();
+            } catch (e:any) {
+              if (e?.code === 4001 || /rejected/i.test(String(e?.message))) {
+                // user rejected
+              } else {
+                console.error("Wallet error", e);
+              }
             } finally { setBusy(false); }
           }}
           disabled={busy}

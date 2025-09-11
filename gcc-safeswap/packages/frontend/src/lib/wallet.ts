@@ -7,8 +7,16 @@ export async function connectInjected() {
   if (!window.ethereum) {
     throw new Error("No injected wallet found.");
   }
-  const accounts = await window.ethereum.request({ method: "eth_requestAccounts" });
-  return accounts[0];
+  try {
+    const accounts = await window.ethereum.request({ method: "eth_requestAccounts" });
+    return accounts[0];
+  } catch (e: any) {
+    if (e?.code === 4001 || /rejected/i.test(String(e?.message))) {
+      return null as any;
+    }
+    console.error("Wallet error", e);
+    throw e;
+  }
 }
 
 export function condorDeepLink(url = currentDappUrl()) {
@@ -28,6 +36,14 @@ export async function connectCondor() {
     window.open(condorDeepLink(), "_blank");
     throw new Error("Condor not found — opening deep link.");
   }
-  const accounts = await prov.request({ method: "eth_requestAccounts" });
-  return accounts[0];
+  try {
+    const accounts = await prov.request({ method: "eth_requestAccounts" });
+    return accounts[0];
+  } catch (e: any) {
+    if (e?.code === 4001 || /rejected/i.test(String(e?.message))) {
+      return null as any;
+    }
+    console.error("Wallet error", e);
+    throw e;
+  }
 }

@@ -1,34 +1,34 @@
-const API_BASE = import.meta.env.VITE_API_BASE as string;
-
-export type Pricebook = {
-  wbnbUsd?: number;
-  gccPerWbnb?: number;
-  BNB_USD?: number;
-  GCC_USD?: number;
-  GCC_BNB?: number;
-  prices?: { BNB_USD?: number; GCC_USD?: number; GCC_BNB?: number };
-  // accept any other shapes the backend might return
-  [k: string]: any;
+export type PriceBook = {
+  updatedAt: string;
+  stale: boolean;
+  sources: string[];
+  prices: { bnbUsd: number; gccBnb: number; gccUsd: number };
 };
 
-export async function getPrices(): Promise<{ bnbUsd: number; gccUsd: number }> {
-  try {
-    const res = await fetch(`${API_BASE}/api/pricebook`, { cache: "no-store" });
-    if (!res.ok) throw new Error(`pricebook ${res.status}`);
-    const pb: Pricebook = await res.json();
+async function sleep(ms: number) {
+  return new Promise((r) => setTimeout(r, ms));
+}
 
-    // Try multiple shapes/keys safely
-    const wbnbUsd =
-      Number(pb.wbnbUsd ?? pb.BNB_USD ?? pb?.prices?.BNB_USD ?? pb?.bnbUsd ?? 0) || 0;
-
-    // Prefer direct GCC_USD, else derive from gccPerWbnb * wbnbUsd
-    const gccUsdDirect = Number(pb.GCC_USD ?? pb?.prices?.GCC_USD ?? pb.gccUsd ?? 0) || 0;
-    const gccPerWbnb = Number(pb.gccPerWbnb ?? pb.GCC_BNB ?? pb?.prices?.GCC_BNB ?? 0) || 0;
-    const gccUsd = gccUsdDirect || (gccPerWbnb && wbnbUsd ? gccPerWbnb * wbnbUsd : 0);
-
-    return { bnbUsd: wbnbUsd, gccUsd };
-  } catch (e) {
-    // last-resort zeros (don't throw—avoids $0 flicker on network blips)
-    return { bnbUsd: 0, gccUsd: 0 };
+export async function loadPriceBook(base = import.meta.env.VITE_API_BASE as string) {
+  const url = `${base}/api/pricebook`;
+  let attempt = 0;
+  let lastErr: any;
+  while (attempt < 3) {
+    try {
+      const r = await fetch(url);
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const pb = (await r.json()) as PriceBook;
+      return pb;
+    } catch (e) {
+      lastErr = e;
+      attempt++;
+      await sleep(250 * attempt);
+    }
   }
+  return {
+    updatedAt: new Date().toISOString(),
+    stale: true,
+    sources: [],
+    prices: { bnbUsd: 0, gccBnb: 0, gccUsd: 0 },
+  } as PriceBook;
 }
