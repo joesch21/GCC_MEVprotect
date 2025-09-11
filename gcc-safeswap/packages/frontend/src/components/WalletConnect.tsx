@@ -23,6 +23,13 @@ export function WalletConnect({ onConnected, condor, onForget }:{ onConnected:(c
                 if (!eth?.request) throw new Error("No EIP-1193 provider found");
                 await eth.request({ method: "eth_requestAccounts" });
                 onConnected();
+              } catch (e:any) {
+                if (e?.code === 4001 || /rejected/i.test(String(e?.message))) {
+                  // user canceled
+                } else {
+                  console.error(e);
+                  (window as any).showToast?.("Wallet error. Please try again.");
+                }
               } finally { setBusy(false); }
             }}
             disabled={busy}

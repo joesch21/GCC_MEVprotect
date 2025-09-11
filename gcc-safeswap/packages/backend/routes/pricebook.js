@@ -1,48 +1,69 @@
-const router = require("express").Router();
+const express = require("express");
 const fetch = (...args) => import("node-fetch").then(({ default: f }) => f(...args));
 
-let cache = null;
-let ts = 0;
-const TTL = 60_000;
+/** @typedef {{ updatedAt: string; stale: boolean; sources: string[]; prices: { bnbUsd: number; gccUsd: number; gccBnb: number } }} PriceBook */
 
-router.get("/", async (_req, res) => {
+const router = express.Router();
+const PAIR_ID = process.env.DEXSCREENER_GCC_WBNB;
+const TTL = Number(process.env.PRICEBOOK_TTL_SEC || 60) * 1000;
+const TIMEOUT = Number(process.env.PRICEBOOK_TIMEOUT_MS || 4000);
+
+let cache = null; // { at:number, data:PriceBook }
+
+async function fetchJSON(url, timeoutMs) {
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), timeoutMs);
   try {
-    if (cache && Date.now() - ts < TTL) return res.json(cache);
+    const res = await fetch(url, {
+      signal: ctl.signal,
+      headers: { "user-agent": "gcc-safeswap/pricebook" },
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+  } finally {
+    clearTimeout(t);
+  }
+}
 
-    const GCC = (process.env.TOKEN_GCC || "").toLowerCase();
-    const WBNB = (process.env.TOKEN_WBNB || "").toLowerCase();
-    const pair = (process.env.PAIR_GCC_WBNB || "").toLowerCase();
-    if (!pair) return res.status(500).json({ error: "missing_pair" });
+async function loadDexscreener() {
+  const api = `https://api.dexscreener.com/latest/dex/pairs/${PAIR_ID}`;
+  const json = await fetchJSON(api, TIMEOUT);
+  const pair = json?.pairs?.[0];
+  if (!pair) throw new Error("no pair");
 
-    const byPair = await fetch(`https://api.dexscreener.com/latest/dex/pairs/bsc/${pair}`).then(r => r.json());
-    const p = byPair?.pair;
-    if (
-      p?.baseToken?.address?.toLowerCase() !== GCC ||
-      p?.quoteToken?.address?.toLowerCase() !== WBNB ||
-      !p?.priceNative
-    ) {
-      return res.status(502).json({ error: "pair_unpriced" });
-    }
+  const bnbUsd = Number(
+    pair.baseToken?.symbol === "WBNB" ? pair.priceUsd : pair.priceUsdBase
+  );
+  const gccUsd = Number(
+    pair.baseToken?.symbol === "WBNB" ? pair.priceUsdQuote : pair.priceUsd
+  );
+  if (!isFinite(bnbUsd) || !isFinite(gccUsd)) throw new Error("bad numbers");
 
-    const gccPerWbnb = Number(p.priceNative);
+  return {
+    updatedAt: new Date().toISOString(),
+    stale: false,
+    sources: ["dexscreener"],
+    prices: { bnbUsd, gccUsd, gccBnb: gccUsd / bnbUsd },
+  };
+}
 
-    // WBNB → USD: prefer stable-quoted pairs
-    const wTok = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${WBNB}`).then(r => r.json());
-    const stables = new Set(["usdt", "usdc", "busd"]);
-    const stablePair = (wTok?.pairs || []).find(p =>
-      p.baseToken?.address?.toLowerCase() === WBNB &&
-      p.priceUsd &&
-      stables.has(p?.quoteToken?.symbol?.toLowerCase?.())
-    ) || (wTok?.pairs || []).find(p => p.priceUsd);
-    const wbnbUsd = Number(stablePair?.priceUsd || 0);
+router.get("/api/pricebook", async (_req, res) => {
+  const now = Date.now();
+  if (cache && now - cache.at < TTL) return res.json(cache.data);
 
-    cache = { gccPerWbnb, wbnbUsd };
-    ts = Date.now();
-    res.json(cache);
-  } catch (e) {
-    res.status(502).json({ error: "price_fetch_failed" });
+  try {
+    const fresh = await loadDexscreener();
+    cache = { at: now, data: fresh };
+    return res.json(fresh);
+  } catch (_e) {
+    if (cache) return res.json({ ...cache.data, stale: true });
+    return res.json({
+      updatedAt: new Date().toISOString(),
+      stale: true,
+      sources: [],
+      prices: { bnbUsd: 0, gccUsd: 0, gccBnb: 0 },
+    });
   }
 });
 
 module.exports = router;
-

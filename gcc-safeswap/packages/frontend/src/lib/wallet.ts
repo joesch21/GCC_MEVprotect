@@ -3,12 +3,21 @@ export function currentDappUrl() {
   return `${protocol}//${host}${pathname}${search}`.replace(/\/+$/, "");
 }
 
-export async function connectInjected() {
+export async function connectInjected(): Promise<string | null> {
   if (!window.ethereum) {
     throw new Error("No injected wallet found.");
   }
-  const accounts = await window.ethereum.request({ method: "eth_requestAccounts" });
-  return accounts[0];
+  try {
+    const accounts = await window.ethereum.request({ method: "eth_requestAccounts" });
+    return accounts[0];
+  } catch (e: any) {
+    if (e?.code === 4001 || /rejected/i.test(String(e?.message))) {
+      return null;
+    }
+    console.error(e);
+    (window as any).showToast?.("Wallet error. Please try again.");
+    throw e;
+  }
 }
 
 export function condorDeepLink(url = currentDappUrl()) {
@@ -22,12 +31,21 @@ export function getCondorProvider(win: any = window) {
   return providers.find((p: any) => p?.isCondor) || null;
 }
 
-export async function connectCondor() {
+export async function connectCondor(): Promise<string | null> {
   const prov = getCondorProvider();
   if (!prov) {
     window.open(condorDeepLink(), "_blank");
     throw new Error("Condor not found — opening deep link.");
   }
-  const accounts = await prov.request({ method: "eth_requestAccounts" });
-  return accounts[0];
+  try {
+    const accounts = await prov.request({ method: "eth_requestAccounts" });
+    return accounts[0];
+  } catch (e: any) {
+    if (e?.code === 4001 || /rejected/i.test(String(e?.message))) {
+      return null;
+    }
+    console.error(e);
+    (window as any).showToast?.("Wallet error. Please try again.");
+    throw e;
+  }
 }

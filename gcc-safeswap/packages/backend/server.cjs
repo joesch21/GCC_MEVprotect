@@ -68,7 +68,7 @@ app.get(["/api/plugins/health", "/plugins/health", "/health"], (_req, res) =>
 // Private RPC chain parameters
 app.use("/api/private-rpc", require("./routes/privateRpc"));
 // Token price lookup
-app.use("/api/pricebook", require("./routes/pricebook"));
+app.use(require("./routes/pricebook"));
 
 // ---------- Helpers ----------
 const _decimalsCache = new Map();
@@ -337,32 +337,6 @@ app.post("/api/relay/private", async (req, res) => {
     res
       .status(502)
       .json({ error: "relay_error", details: String(e?.message || e) });
-  }
-});
-
-app.get("/api/pricebook", async (_req, res) => {
-  try {
-    const provider = new ethers.providers.JsonRpcProvider(process.env.BSC_RPC);
-    const router   = new ethers.Contract(PCS_V2_ROUTER, PCS_V2_ABI, provider);
-
-    const oneWBNB = ethers.utils.parseUnits("1", 18);
-    const bnbOut = await router.getAmountsOut(oneWBNB, [WBNB, USDT]);
-    const bnbUsd = bnbOut[1].toString();
-
-    const oneGCC = ethers.utils.parseUnits("1", 18);
-    const gccOut = await router.getAmountsOut(oneGCC, [GCC, WBNB]);
-    const gccWbnb = gccOut[1].toString();
-
-    const gccUsd = (BigInt(gccWbnb) * BigInt(bnbUsd) / 10n**18n).toString();
-
-    res.json({
-      wbnbUsd: bnbUsd,
-      gccWbnb: gccWbnb,
-      gccUsd: gccUsd,
-      at: Date.now()
-    });
-  } catch (e) {
-    res.status(502).json({ error: "pricebook_failed", details: String(e.message || e) });
   }
 });
 

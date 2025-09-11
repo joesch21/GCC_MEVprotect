@@ -2,10 +2,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { BrowserProvider } from "ethers";
 import { computePortfolioUSD } from "../lib/portfolio";
 
-type State = { totalUsd: number; bnb: number; gcc: number };
+type State = { totalUsd: number; bnb: number; gcc: number; stale: boolean };
 
 export function usePortfolio(account?: string) {
-  const [state, setState] = useState<State>({ totalUsd: 0, bnb: 0, gcc: 0 });
+  const [state, setState] = useState<State>({ totalUsd: 0, bnb: 0, gcc: 0, stale: false });
   const timer = useRef<number | null>(null);
 
   const refresh = useCallback(async () => {
@@ -27,7 +27,7 @@ export function usePortfolio(account?: string) {
       });
     } catch {}
 
-    setState({ totalUsd: res.totalUsd, bnb: res.bnb, gcc: res.gcc });
+    setState({ totalUsd: res.totalUsd, bnb: res.bnb, gcc: res.gcc, stale: res.stale });
   }, [account]);
 
   useEffect(() => {

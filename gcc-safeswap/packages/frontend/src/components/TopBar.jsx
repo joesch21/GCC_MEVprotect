@@ -2,7 +2,7 @@ import React from 'react';
 import { usePortfolio } from '../hooks/usePortfolio';
 
 export default function TopBar({ account }) {
-  const { totalUsd, bnb, gcc } = usePortfolio(account);
+  const { totalUsd, bnb, gcc, stale } = usePortfolio(account);
 
   const fmtUsd = (n) =>
     n <= 0 ? "$0.0000" :
@@ -14,7 +14,7 @@ export default function TopBar({ account }) {
     <div className="topbar badges-row">
       <BalancePill symbol="BNB" amount={fmtToken(bnb, 4)} />
       <BalancePill symbol="GCC" amount={fmtToken(gcc, 2)} />
-      <PortfolioPill usd={fmtUsd(totalUsd)} />
+      <PortfolioPill usd={fmtUsd(totalUsd)} stale={stale} />
       <RefreshButton onClick={() => window.dispatchEvent(new Event('portfolio:refresh'))} />
     </div>
   );
@@ -28,8 +28,13 @@ function BalancePill({ symbol, amount }) {
   );
 }
 
-function PortfolioPill({ usd }) {
-  return <div className="pill">Portfolio {usd}</div>;
+function PortfolioPill({ usd, stale }) {
+  return (
+    <div className="pill">
+      Portfolio {usd}
+      {stale && <span className="muted" style={{ marginLeft: 4 }}>↻ last price</span>}
+    </div>
+  );
 }
 
 function RefreshButton({ onClick }) {
