@@ -32,13 +32,18 @@ const ERC20_ABI = [
   "function approve(address spender, uint256 value) returns (bool)"
 ];
 
-const PCS_V2_ABI = [
+let PCS_V2_ABI = [
   "function getAmountsOut(uint amountIn, address[] calldata path) view returns (uint[] memory amounts)",
   // swaps (supporting fee-on-transfer)
   "function swapExactTokensForTokensSupportingFeeOnTransferTokens(uint amountIn, uint amountOutMin, address[] calldata path, address to, uint deadline)",
   "function swapExactTokensForETHSupportingFeeOnTransferTokens(uint amountIn, uint amountOutMin, address[] calldata path, address to, uint deadline)",
   "function swapExactETHForTokensSupportingFeeOnTransferTokens(uint amountOutMin, address[] calldata path, address to, uint deadline) payable"
 ];
+PCS_V2_ABI = PCS_V2_ABI.concat([
+  "function swapExactTokensForTokens(uint amountIn, uint amountOutMin, address[] calldata path, address to, uint deadline)",
+  "function swapExactTokensForETH(uint amountIn, uint amountOutMin, address[] calldata path, address to, uint deadline)",
+  "function swapExactETHForTokens(uint amountOutMin, address[] calldata path, address to, uint deadline) payable"
+]);
 const FACTORY_ABI = ["function getPair(address,address) view returns (address)"];
 const PAIR_ABI    = [
   "function token0() view returns (address)",
@@ -46,8 +51,8 @@ const PAIR_ABI    = [
   "function getReserves() view returns (uint112,uint112,uint32)"
 ];
 
-const DEFAULT_SLIPPAGE_BPS = 300; // 3.00%
-const REFLECTION_PAD_BPS   = 200; // 2.00% min-received buffer
+const DEFAULT_SLIPPAGE_BPS    = 300; // 3.00%
+const REFLECTION_PENALTY_BPS  = 100; // 1.00% safety for fee-on-transfer
 
 // ---------- App ----------
 app.use(cors());
@@ -112,6 +117,21 @@ function isPositiveAmount(x) {
   if (x === null || x === undefined) return false;
   const n = Number(String(x));
   return Number.isFinite(n) && n > 0;
+}
+
+function buildPath(from, to) {
+  const f = ethers.utils.getAddress(from).toLowerCase();
+  const t = ethers.utils.getAddress(to).toLowerCase();
+  const w = ethers.utils.getAddress(WBNB).toLowerCase();
+  const g = ethers.utils.getAddress(GCC).toLowerCase();
+
+  if ((f === g && t !== w) || (t === g && f !== w)) {
+    return [f, w, t];
+  }
+  if ((f !== w && t !== w) && (f !== g && t !== g)) {
+    return [f, w, t];
+  }
+  return [f, t];
 }
 
 // ---------- 0x (primary) ----------
@@ -196,9 +216,14 @@ async function handleQuote(req, res) {
       }
     }
 
-    // min-received (reflection pad)
+    // min-received cushion: user slippage + reflection penalty when GCC involved
     const buyStr = String(q.buyAmount);
-    const minStr = ((BigInt(buyStr) * BigInt(10000 - REFLECTION_PAD_BPS)) / 10000n).toString();
+    const slipBps = Number(slippageBps || DEFAULT_SLIPPAGE_BPS);
+    const penaltyBps = (sell === GCC || buy === GCC) ? REFLECTION_PENALTY_BPS : 0;
+    const minStr = (
+      BigInt(buyStr) * BigInt(10000 - slipBps - penaltyBps)
+    ) / 10000n;
+    const minStrHex = minStr.toString();
 
     const payload = {
       source: q.source,
@@ -206,7 +231,7 @@ async function handleQuote(req, res) {
       buyToken: buy,
       sellAmount: String(q.sellAmount),
       buyAmount: buyStr,
-      minBuyAmount: minStr,
+      minBuyAmount: minStrHex,
       slippageBps: Number(slippageBps || DEFAULT_SLIPPAGE_BPS),
       router: q.source === "pcs_v2" ? PCS_V2_ROUTER : undefined,
       at: Date.now()
@@ -271,10 +296,12 @@ app.post("/api/tx/swap", async (req, res) => {
     const sell = String(fromToken).toLowerCase() === "bnb" ? WBNB : String(fromToken).toLowerCase();
     const buy  = String(toToken).toLowerCase()   === "bnb" ? WBNB : String(toToken).toLowerCase();
 
-    const iface   = new ethers.utils.Interface(PCS_V2_ABI);
-    const path    = [sell, buy];
-    const router  = PCS_V2_ROUTER;
-    const deadline = Math.floor(Date.now()/1000) + 60*20; // 20 min
+    const path       = buildPath(sell, buy);
+    const isGccRoute = path.some(a => a === GCC);
+    const iface      = new ethers.utils.Interface(PCS_V2_ABI);
+    const router     = PCS_V2_ROUTER;
+    const deadline   = Math.floor(Date.now()/1000) + 60*20; // 20 min
+    const gasLimit   = ethers.BigNumber.from(isGccRoute ? 450000 : 250000);
 
     let method, data, value = "0x0";
 
@@ -282,17 +309,34 @@ app.post("/api/tx/swap", async (req, res) => {
     const receivingNative = (String(toToken).toUpperCase() === "BNB");
 
     if (sellingNative) {
-      method = "swapExactETHForTokensSupportingFeeOnTransferTokens";
+      method = isGccRoute ? "swapExactETHForTokensSupportingFeeOnTransferTokens" : "swapExactETHForTokens";
       data   = iface.encodeFunctionData(method, [ minAmountOut, path, recipient, deadline ]);
       value  = ethers.BigNumber.from(String(amountIn)).toHexString();
     } else if (receivingNative) {
-      method = "swapExactTokensForETHSupportingFeeOnTransferTokens";
+      method = isGccRoute ? "swapExactTokensForETHSupportingFeeOnTransferTokens" : "swapExactTokensForETH";
       data   = iface.encodeFunctionData(method, [ amountIn, minAmountOut, path, recipient, deadline ]);
-      value  = "0x0";
     } else {
-      method = "swapExactTokensForTokensSupportingFeeOnTransferTokens";
+      method = isGccRoute ? "swapExactTokensForTokensSupportingFeeOnTransferTokens" : "swapExactTokensForTokens";
       data   = iface.encodeFunctionData(method, [ amountIn, minAmountOut, path, recipient, deadline ]);
-      value  = "0x0";
+    }
+
+    const tx = {
+      to: router,
+      data,
+      value,
+      gasLimit: gasLimit.toHexString()
+    };
+
+    try {
+      const p = new ethers.providers.JsonRpcProvider(process.env.BSC_RPC);
+      await p.call({ ...tx, from: recipient });
+    } catch (e) {
+      const msg = String(e?.message || "");
+      if (/INSUFFICIENT_OUTPUT_AMOUNT/i.test(msg))
+        return res.status(200).json({ ok:false, code:"minOut", hint:"Raise slippage to 3–5% for GCC, or try smaller size." });
+      if (/TRANSFER_FROM_FAILED|ALLOWANCE/i.test(msg))
+        return res.status(200).json({ ok:false, code:"allowance", hint:"Approve GCC for PancakeSwap (router) and retry." });
+      return res.status(200).json({ ok:false, code:"simulate", hint:"Route not liquid or quote stale; refresh & retry." });
     }
 
     return res.json({
@@ -300,11 +344,7 @@ app.post("/api/tx/swap", async (req, res) => {
       router,
       method,
       path,
-      tx: {
-        to: router,
-        data,
-        value
-      }
+      tx
     });
   } catch (e) {
     return res.status(502).json({ error: "swap_build_failed", details: String(e.message || e) });

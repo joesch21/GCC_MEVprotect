@@ -45,14 +45,17 @@ function humanizeError(err) {
 
 async function sendWithPrivacy({ tx, account, usePrivateRelay, condor }: { tx: any; account: string; usePrivateRelay: boolean; condor?: CondorCtx }) {
   if (!usePrivateRelay || !condor) {
+    const params: any = { from: account, to: tx.to, data: tx.data, value: tx.value };
+    if (tx.gasLimit) params.gas = tx.gasLimit;
     const hash = await window.ethereum.request({
       method: "eth_sendTransaction",
-      params: [{ from: account, to: tx.to, data: tx.data, value: tx.value }],
+      params: [params],
     });
     return { hash, via: "public" };
   }
 
   const unsigned = await condor.signer.buildUnsignedLegacyTx(tx.to, tx.data, tx.value);
+  if (tx.gasLimit) unsigned.gasLimit = tx.gasLimit;
   const raw = await condor.signer.signRaw(unsigned);
   const resp = await sendViaPrivateRelay(raw);
   return { hash: resp.txHash || null, via: "condor_private" };
@@ -75,6 +78,12 @@ export default function SafeSwap({ account, condor }: { account: string | null; 
 
   const CHAIN_ID = CHAIN_BSC;
   const REFLECTION_SET = new Set(['0x092ac429b9c3450c9909433eb0662c3b7c13cf9a']);
+
+  useEffect(() => {
+    const involves = (!from.isNative && REFLECTION_SET.has(from.address.toLowerCase())) ||
+                     (!to.isNative && REFLECTION_SET.has(to.address.toLowerCase()));
+    setSlip(involves ? 300 : 200);
+  }, [fromSym, toSym]);
 
   useEffect(() => {
     async function init() {
@@ -170,6 +179,12 @@ export default function SafeSwap({ account, condor }: { account: string | null; 
         minAmountOut: minOut,
         recipient: account
       });
+      if (swap.ok === false) {
+        const msg = swap.hint || 'Swap simulation failed.';
+        setStatus(msg);
+        window.showToast?.(msg);
+        return;
+      }
       const submit = await sendWithPrivacy({ tx: swap.tx, account, usePrivateRelay: useRelay, condor });
       logInfo("Swap submitted", submit);
 
@@ -258,7 +273,7 @@ export default function SafeSwap({ account, condor }: { account: string | null; 
       {status && <p className="status">{status}</p>}
       {involvesReflection && (
         <div className="toast warn">
-          GCC is a reflection (fee-on-transfer) token. Higher slippage (2–5%) may be required.
+          GCC is a fee-on-transfer token. MetaMask may show a simulation warning; we set a safe gas limit and the on-chain cost is typically &lt;$0.50.
         </div>
       )}
       {quote && (
