@@ -3,14 +3,19 @@
   "version": "0.2.0",
   "private": true,
   "scripts": {
-    "start": "node server.cjs"
+    "start": "node server.cjs",
+    "test": "jest --runInBand"
   },
   "dependencies": {
     "cors": "2.8.5",
     "express": "4.19.2",
     "express-rate-limit": "7.0.0",
     "ethers": "5.7.2",
+    "ioredis": "5.4.1",
     "morgan": "1.10.0",
     "node-fetch": "2.7.0"
+  },
+  "devDependencies": {
+    "jest": "29.7.0"
   }
 }
