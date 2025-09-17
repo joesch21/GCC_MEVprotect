@@ -3,3 +3,7 @@
 **/.env
 **/__pycache__
 *.pyc
+
+# local nested repo (keep out of monorepo index)
+/trial-wallet
+
