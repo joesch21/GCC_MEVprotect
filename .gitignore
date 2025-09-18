@@ -1,9 +1,24 @@
-**/node_modules
-.env
+@'
+# Node / JS
+**/node_modules/
 **/.env
-**/__pycache__
-*.pyc
+**/.env.*
+*.log
 
-# local nested repo (keep out of monorepo index)
-/trial-wallet
+# Build outputs
+**/dist/
+**/.vite/
+**/build/
+**/.cache/
 
+# OS / editors
+.DS_Store
+Thumbs.db
+
+# Backups
+*.bak
+
+# KEEP these two tracked (don’t ignore!)
+!gcc-safeswap/packages/frontend/public/pkg/condor_encoder.js
+!gcc-safeswap/packages/frontend/public/pkg/condor_encoder_bg.wasm
+'@ | Set-Content .gitignore
