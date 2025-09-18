@@ -199,3 +199,71 @@ export async function unlockFromPng(file: File, pass: string) {
   pk = ""; // clear ASAP
   return wallet;
 }
+// robustDecode.ts
+export function extractKeyMaybe(obj: any): string | null {
+  const HEX64 = /^0x?[0-9a-fA-F]{64}$/;
+  const norm = (s: string) => (s.startsWith("0x") ? s : `0x${s}`);
+
+  // 1) direct hex key?
+  const str = obj?.key ?? obj?.private_key ?? obj?.privKey ?? obj?.privateKey;
+  if (typeof str === "string" && HEX64.test(str)) return norm(str);
+
+  // 2) 32-byte arrays / array-likes (key_bytes, private_key_bytes, etc.)
+  const bytes =
+    obj?.key_bytes ?? obj?.private_key_bytes ?? obj?.secret_key ?? obj?.seckey ?? obj?.pk ?? null;
+
+  const asArrayLike =
+    bytes && typeof bytes === "object" && typeof bytes.length === "number" && bytes.length === 32;
+
+  if (asArrayLike) {
+    let out = "0x";
+    for (let i = 0; i < 32; i++) {
+      const n = Number(bytes[i]) & 0xff;
+      out += n.toString(16).padStart(2, "0");
+    }
+    return HEX64.test(out) ? out : null;
+  }
+
+  // 3) generic string that might be JSON or contain hex
+  if (typeof obj === "string") {
+    try {
+      const j = JSON.parse(obj);
+      return extractKeyMaybe(j);
+    } catch {
+      const m = obj.match(/0x?[0-9a-fA-F]{64}/);
+      return m ? norm(m[0]) : null;
+    }
+  }
+
+  // 4) unwrap common wrappers and search nested
+  for (const k of ["Ok", "ok", "value", "result"]) {
+    if (obj && typeof obj === "object" && k in obj) {
+      const r = extractKeyMaybe((obj as any)[k]);
+      if (r) return r;
+    }
+  }
+  if (obj && typeof obj === "object") {
+    for (const v of Object.values(obj)) {
+      const r = extractKeyMaybe(v);
+      if (r) return r;
+    }
+  }
+  return null;
+}
+
+export async function decodeViaWalletExport(png: File | ArrayBuffer, pass: string): Promise<string> {
+  const js = "/pkg/condor_encoder.js";
+  const wasm = "/pkg/condor_encoder_bg.wasm";
+  const mod: any = await import(/* @vite-ignore */ `${js}?v=${Date.now()}`);
+  await mod.default?.({ module_or_path: wasm });
+
+  const bytes = png instanceof File ? new Uint8Array(await png.arrayBuffer()) : new Uint8Array(png);
+
+  // call exactly like the trial page
+  const val = mod.wallet_from_image_with_password(bytes, pass);
+  const obj = typeof val === "string" ? JSON.parse(val) : val;
+
+  const key = extractKeyMaybe(obj);
+  if (!key) throw new Error("Decode returned object without a private key");
+  return key;
+}
