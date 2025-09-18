@@ -1,4 +1,4 @@
-import {
+﻿import {
   loadCondorWallet,
   decodePngToPrivateKey,
   privateKeyToWallet,
@@ -17,7 +17,7 @@ export async function decodeFromPng(
   // normalize to File | ArrayBuffer for the real helper
   if (png instanceof Uint8Array) {
     return decodePngToPrivateKey(
-      png.buffer.slice(png.byteOffset, png.byteOffset + png.byteLength),
+      png.subarray(png.byteOffset, png.byteOffset + png.byteLength).slice().buffer,
       pass
     );
   }
@@ -25,3 +25,4 @@ export async function decodeFromPng(
 }
 
 export { decodePngToPrivateKey, privateKeyToWallet };
+
