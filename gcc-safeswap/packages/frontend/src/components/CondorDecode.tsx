@@ -71,7 +71,8 @@ async function fileToBytesPNG(f: File): Promise<Uint8Array> {
 
 function getProvider() {
   // ethers v5 vs v6 compatibility
-  const url = "https://bsc-dataseed.binance.org";
+  const url =
+    (import.meta as any)?.env?.VITE_BSC_RPC ?? "https://bsc-dataseed.binance.org";
   // @ts-ignore
   if (ethers?.providers?.JsonRpcProvider) {
     // v5
@@ -142,7 +143,7 @@ export default function CondorDecode({
     }
   }, [pass, onUnlocked]);
 
-  // Optional future relay usage (kept for your wiring; not invoked)
+  // Optional future relay usage (kept for wiring; not invoked)
   const signAndRelay = useCallback(
     async (unsignedTx: {
       to: string;

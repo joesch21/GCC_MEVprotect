@@ -1,14 +1,21 @@
+// packages/frontend/src/components/WalletConnect.tsx
 import { useState } from "react";
 import { isMetaMaskEnv, isMobileBrowser, buildMetaMaskDeeplink } from "../lib/walletDetect";
 import ConnectCondor from "../features/wallets/ConnectCondor";
 
-export function WalletConnect({ onConnected, condor, onForget }:{ onConnected:(ctx?:any)=>void; condor?:any; onForget?:()=>void }) {
+export function WalletConnect({
+  onConnected,
+  condor,
+  onForget
+}:{
+  onConnected:(ctx?:any)=>void;
+  condor?:any;
+  onForget?:()=>void;
+}) {
   const [busy, setBusy] = useState(false);
   const [showCondor, setShowCondor] = useState(false);
   const mm = isMetaMaskEnv();
   const showDeepLink = isMobileBrowser(); // not already in MetaMask
-
-  // always allow manual connections; no early return
 
   return (
     <div className="card card--connect">
@@ -48,11 +55,16 @@ export function WalletConnect({ onConnected, condor, onForget }:{ onConnected:(c
           Connect Condor Wallet
         </button>
       </div>
+
       {showCondor && !condor && (
-        <div className="mt-4">
+        <div
+          className="mt-4"
+          ref={(el) => el?.scrollIntoView({ behavior: "smooth", block: "nearest" })}
+        >
           <ConnectCondor onConnected={(ctx) => { onConnected(ctx); setShowCondor(false); }} />
         </div>
       )}
+
       {condor && (
         <div className="mt-4 space-y-2">
           <div className="muted">Connected: {condor.address.slice(0,6)}…{condor.address.slice(-4)}</div>
