@@ -1,35 +1,36 @@
 // packages/frontend/src/lib/condor/signer.ts
 import { ethers } from "ethers";
 
-export type LegacyTxFields = {
-  to: string;
-  data?: string;
-  value?: string;     // hex (0x..)
-  gasLimit: string;   // hex
-  gasPrice: string;   // hex
-  nonce: number;
-  chainId: number;
-  type: 0;
-};
+/** ---------------- v5/v6 helpers (no hard type refs to ethers.providers) ---------------- */
 
-type ProviderLike =
-  | string
-  | ethers.providers.JsonRpcProvider        // v5
-  | ethers.JsonRpcProvider                  // v6
-  | ethers.AbstractProvider;                // v6 base
+type ProviderLike = string | any; // keep loose to avoid v5/v6 TS friction
 
-function isV5Provider(p: any): p is ethers.providers.JsonRpcProvider {
-  return !!p && !!p.getNetwork && !!ethers?.providers?.JsonRpcProvider && p instanceof (ethers as any).providers.JsonRpcProvider;
+function makeProvider(rpc: string): any {
+  // v6: ethers.JsonRpcProvider ; v5: ethers.providers.JsonRpcProvider
+  const anyE = ethers as any;
+  if (anyE?.JsonRpcProvider) return new anyE.JsonRpcProvider(rpc);            // v6
+  if (anyE?.providers?.JsonRpcProvider) return new anyE.providers.JsonRpcProvider(rpc); // v5
+  throw new Error("No JsonRpcProvider found in ethers build");
 }
 
-function toProvider(p: ProviderLike): any {
-  if (typeof p === "string") {
-    // v5 has ethers.providers.JsonRpcProvider; v6 has ethers.JsonRpcProvider
-    // @ts-ignore
-    if (ethers?.providers?.JsonRpcProvider) return new (ethers as any).providers.JsonRpcProvider(p); // v5
-    return new (ethers as any).JsonRpcProvider(p); // v6
-  }
-  return p;
+function isV5StyleProvider(p: any): boolean {
+  // duck-typing: v5 providers have sendTransaction that takes a populated tx
+  return !!p && typeof p.sendTransaction === "function" && !p.broadcastTransaction;
+}
+
+function getBigIntCompat(x: any): bigint {
+  const anyE = ethers as any;
+  if (anyE.getBigInt) return anyE.getBigInt(x); // v6
+  // v5 fallback
+  const BN = anyE.BigNumber?.isBigNumber?.(x) ? x : anyE.BigNumber?.from?.(x);
+  return BN ? BigInt(BN.toString()) : BigInt(x);
+}
+
+function toHexCompat(x: any): string {
+  const anyE = ethers as any;
+  if (anyE.toBeHex) return anyE.toBeHex(x); // v6
+  const bi = getBigIntCompat(x);
+  return "0x" + bi.toString(16);
 }
 
 function ensure0x64(pk: string) {
@@ -38,38 +39,48 @@ function ensure0x64(pk: string) {
   return s;
 }
 
-function toHex(v: bigint | string) {
-  return typeof v === "bigint" ? ethers.toBeHex(v) : ethers.toBeHex(ethers.getBigInt(v));
-}
+/** ---------------- Types ---------------- */
+
+export type LegacyTxFields = {
+  to: string;
+  data?: string;
+  value?: string;   // 0x hex
+  gasLimit: string; // 0x hex
+  gasPrice: string; // 0x hex
+  nonce: number;
+  chainId: number;
+  type: 0;
+};
+
+/** ---------------- Signer class ---------------- */
 
 export class CondorSigner {
   privateKey: string;
-  wallet: ethers.Wallet;
-  provider: any; // v5/v6 compatible provider
+  provider: any;
+  wallet: any; // v5/v6 wallet
 
   constructor(pkHex: string, rpcOrProvider: ProviderLike) {
     this.privateKey = ensure0x64(pkHex);
-    this.provider = toProvider(rpcOrProvider);
-    // v5/v6 wallet both accept (pk, provider)
-    // @ts-ignore
-    this.wallet = new (ethers as any).Wallet(this.privateKey, this.provider);
+    this.provider = typeof rpcOrProvider === "string" ? makeProvider(rpcOrProvider) : rpcOrProvider;
+
+    const anyE = ethers as any;
+    this.wallet = new anyE.Wallet(this.privateKey, this.provider); // v5 or v6
   }
 
-  address() {
+  address(): string {
     return this.wallet.address;
   }
 
   /**
-   * Build a legacy type-0 unsigned tx for BSC (default).
-   * @param gasMult safety multiplier (e.g., 1.2 = +20% buffer)
-   * @param overrides manual gasPrice/gasLimit/nonce if you know them
+   * Build a legacy type-0 unsigned tx (BSC-friendly).
+   * gasMult: e.g. 1.2 = +20% buffer
    */
   async buildUnsignedLegacyTx(
     to: string,
-    data: string = "0x",
-    value: string = "0x0",
+    data = "0x",
+    value = "0x0",
     gasMult = 1.2,
-    overrides: Partial<Pick<LegacyTxFields, "gasPrice"|"gasLimit"|"nonce">> = {}
+    overrides: Partial<Pick<LegacyTxFields, "gasPrice" | "gasLimit" | "nonce">> = {}
   ): Promise<LegacyTxFields> {
     const [net, nonce, gasPrice, est] = await Promise.all([
       this.provider.getNetwork(),
@@ -78,27 +89,23 @@ export class CondorSigner {
       this.provider.estimateGas({ from: this.wallet.address, to, data, value })
     ]);
 
-    // multiply estimate
-    const estBig = ethers.getBigInt(est);
-    const limit = overrides.gasLimit
-      ? ethers.getBigInt(overrides.gasLimit)
-      : (estBig * BigInt(Math.floor(gasMult * 100))) / 100n;
+    const estBI = getBigIntCompat(est);
+    const limitBI = overrides.gasLimit
+      ? getBigIntCompat(overrides.gasLimit)
+      : (estBI * BigInt(Math.floor(gasMult * 100))) / 100n;
 
     return {
       to,
       data,
-      value: toHex(value),
-      gasLimit: toHex(limit),
-      gasPrice: toHex(gasPrice),
+      value: toHexCompat(value),
+      gasLimit: toHexCompat(limitBI),
+      gasPrice: toHexCompat(gasPrice),
       nonce: Number(nonce),
-      chainId: Number(net.chainId),
+      chainId: Number((net?.chainId ?? 0)),
       type: 0
     };
   }
 
-  /**
-   * Signs a legacy transaction. Optionally asserts expected chainId.
-   */
   async signRaw(unsigned: LegacyTxFields, expectChainId?: number): Promise<string> {
     if (expectChainId != null && unsigned.chainId !== expectChainId) {
       throw new Error(`ChainId mismatch: unsigned=${unsigned.chainId} expected=${expectChainId}`);
@@ -106,32 +113,63 @@ export class CondorSigner {
     const tx = {
       to: unsigned.to,
       data: unsigned.data ?? "0x",
-      value: ethers.getBigInt(unsigned.value ?? "0x0"),
-      gasLimit: ethers.getBigInt(unsigned.gasLimit),
-      gasPrice: ethers.getBigInt(unsigned.gasPrice),
+      value: getBigIntCompat(unsigned.value ?? "0x0"),
+      gasLimit: getBigIntCompat(unsigned.gasLimit),
+      gasPrice: getBigIntCompat(unsigned.gasPrice),
       nonce: unsigned.nonce,
       chainId: unsigned.chainId,
       type: 0 as const
     };
-    return await this.wallet.signTransaction(tx as any);
+    return await this.wallet.signTransaction(tx);
   }
 
-  /**
-   * Broadcast a signed raw tx via the current provider.
-   * Returns the tx hash.
-   */
+  /** Broadcast a signed raw tx. Returns tx hash. */
   async sendRaw(raw: string): Promise<string> {
-    // v5: provider.sendTransaction; v6: provider.broadcastTransaction
-    if (isV5Provider(this.provider) || this.provider?.sendTransaction) {
-      const r = await this.provider.sendTransaction(raw);
+    if (isV5StyleProvider(this.provider)) {
+      const r = await this.provider.sendTransaction(raw);          // v5
       return r?.hash ?? r;
     }
-    if (this.provider?.broadcastTransaction) {
-      const r = await this.provider.broadcastTransaction(raw);
+    if (typeof this.provider.broadcastTransaction === "function") {
+      const r = await this.provider.broadcastTransaction(raw);     // v6
       return r?.hash ?? r;
     }
-    // Fallback via JSON-RPC
-    const hash = await this.provider.send("eth_sendRawTransaction", [raw]);
+    // last-resort JSON-RPC
+    const hash = await this.provider.send?.("eth_sendRawTransaction", [raw]);
     return hash;
   }
+}
+
+/** ---------------- Minimal in-memory “hook” API for your UI ----------------
+ * Store the unlocked pk in memory (tab scope). No persistence.
+ * This matches your previous import: { useCondorPrivateKey } from "../lib/condor/signer"
+ * and gives you helpers to read/clear it.
+ */
+
+type CondorCtx = {
+  signer: CondorSigner;
+  address: string;
+  provider: any;
+};
+
+let _condorCtx: CondorCtx | null = null;
+
+/** Load a pk into memory and return a lightweight context */
+export function useCondorPrivateKey(pkHex: string, rpc?: string | any): CondorCtx {
+  const _rpc =
+    rpc ||
+    (import.meta as any)?.env?.VITE_BSC_RPC ||
+    "https://bsc-dataseed.binance.org";
+
+  const signer = new CondorSigner(pkHex, typeof _rpc === "string" ? makeProvider(_rpc) : _rpc);
+  _condorCtx = { signer, address: signer.address(), provider: signer.provider };
+  return _condorCtx;
+}
+
+/** Optional helpers for consumers */
+export function getCondorContext(): CondorCtx | null {
+  return _condorCtx;
+}
+
+export function forgetCondorSigner(): void {
+  _condorCtx = null;
 }
