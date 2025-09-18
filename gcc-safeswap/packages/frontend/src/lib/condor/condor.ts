@@ -1,188 +1,162 @@
 // packages/frontend/src/lib/condor/condor.ts
 import { ethers } from "ethers";
 
-/* ---------------- logger bridge (to your Debug logs) ---------------- */
-function uiLog(message: string, ctx?: Record<string, any>) {
-  const line = ctx ? `${message} ${safeJson(ctx)}` : message;
-  try { (window as any).addLog?.(line); } catch {}
-  try { (window as any).log?.(line); } catch {}
-  try { (window as any).__pushLog?.(line); } catch {}
-  // eslint-disable-next-line no-console
-  console.info(line);
-}
-function safeJson(x: any) { try { return JSON.stringify(x); } catch { return "[unserializable]"; } }
+type CondorExports = {
+  // wasm-pack init
+  default?: (opts?: { module_or_path: string } | string) => Promise<any> | any;
 
-/* ---------------- loose wasm module typing ---------------- */
-type CondorWasm = {
-  default?: (wasm?: string | { module_or_path: string }) => Promise<any> | any;
-  decode_png?: (png: Uint8Array, pass: string) => Promise<any> | any;
-  wallet_from_image_with_password?: (png: Uint8Array, pass: string) => Promise<any> | any;
-  decode_wallet_from_image?: (png: Uint8Array, pass: string) => Promise<any> | any;
-  wallet_from_key?: (png: Uint8Array, pass: string) => Promise<any> | any;
-  [k: string]: any;
+  // known decoders (names vary per build)
+  decode_png?: (png: Uint8Array, pass: string) => any;
+  decode_wallet_from_image?: (png: Uint8Array, pass: string) => any;
+  wallet_from_image_with_password?: (png: Uint8Array, pass: string) => any;
+
+  // sometimes present on mixed builds; we’ll probe it too
+  wallet_from_key?: (png: Uint8Array, pass: string) => any;
 };
 
-let condorReady: Promise<CondorWasm> | null = null;
+let ready: Promise<CondorExports> | null = null;
 
-/* ---------------- absolute same-origin URLs ---------------- */
-const JS_URL   = new URL("/pkg/condor_encoder.js", location.origin).toString();
+// ABSOLUTE same-origin URLs (no remote hosts)
+const JS_URL = new URL("/pkg/condor_encoder.js", location.origin).toString();
 const WASM_URL = new URL("/pkg/condor_encoder_bg.wasm", location.origin).toString();
 
-/* ---------------- init + cache ---------------- */
-export function loadCondorWallet(): Promise<CondorWasm> {
-  if (condorReady) return condorReady;
-  condorReady = (async () => {
-    uiLog("[Condor] loading wasm module", { jsUrl: JS_URL, wasmUrl: WASM_URL });
+/* ---------------- helpers ---------------- */
 
-    const mod: any = await import(/* @vite-ignore */ `${JS_URL}?v=${Date.now()}`);
-
-    if (typeof mod.default === "function") {
-      try { await mod.default(WASM_URL); }
-      catch { try { await mod.default({ module_or_path: WASM_URL }); }
-      catch { await mod.default(); } }
-    }
-
-    try {
-      const keys = Object.keys(mod || {});
-      const fnKeys = keys.filter((k) => typeof (mod as any)[k] === "function");
-      uiLog("[Condor] wasm exports available", { keys, functions: fnKeys });
-    } catch {}
-
-    return mod as CondorWasm;
-  })();
-  return condorReady;
+function isHex(re: RegExp, s?: string): s is string {
+  return !!s && re.test(s);
 }
 
-/* ---------------- helpers ---------------- */
-function ensure0x64(key: string): string {
-  if (!key) throw new Error("Decode failed (empty key)");
-  const k = key.startsWith("0x") ? key : `0x${key}`;
-  if (!/^0x[0-9a-fA-F]{64}$/.test(k)) throw new Error("Decode failed (invalid key)");
+function norm0x64(s: string) {
+  const k = s.startsWith("0x") ? s : `0x${s}`;
+  if (!/^0x[0-9a-fA-F]{64}$/.test(k)) throw new Error("invalid key");
   return k;
 }
 
-function toBytes(input: File | ArrayBuffer | Uint8Array): Promise<Uint8Array> | Uint8Array {
-  if (input instanceof Uint8Array) return input.slice();
-  if (input instanceof File) return input.arrayBuffer().then((ab) => new Uint8Array(ab));
-  return new Uint8Array(input);
-}
+/** Recursively search any return shape for a 64-hex private key and an address. */
+function deepExtractKeyAndAddress(root: unknown): { key: string; address?: string } {
+  const seen = new Set<any>();
 
-function safeParse(raw: any): any { if (typeof raw !== "string") return raw; try { return JSON.parse(raw); } catch { return raw; } }
-
-function extractKey(out: any): string | null {
-  if (!out) return null;
-  let key: string | undefined =
-    out.key ?? out.private_key ?? out?.result?.key ?? out?.result?.private_key;
-  if (typeof out === "string") key = out;
-  if (!key) {
+  const tryFromString = (s: string) => {
+    // try JSON first
     try {
-      const s = JSON.stringify(out);
-      const m = s.match(/"(0x)?([0-9a-fA-F]{64})"/);
-      if (m?.[2]) key = m[1] ? `${m[1]}${m[2]}` : `0x${m[2]}`;
+      const j = JSON.parse(s);
+      const r = deepExtractKeyAndAddress(j);
+      if (r.key) return r;
     } catch {}
-  }
-  return key ? ensure0x64(key) : null;
-}
-
-/* breadth-first discovery of function exports, including nested objects (depth 2) */
-function discoverFns(root: any, depth = 2, prefix = "", seen = new Set<any>()): Array<[string, any]> {
-  const out: Array<[string, any]> = [];
-  if (!root || seen.has(root) || depth < 0) return out;
-  seen.add(root);
-
-  const entries = Object.entries(root);
-  for (const [k, v] of entries) {
-    const name = prefix ? `${prefix}.${k}` : k;
-    if (typeof v === "function") out.push([name, v]);
-    else if (v && typeof v === "object" && !Array.isArray(v)) {
-      out.push(...discoverFns(v, depth - 1, name, seen));
+    // raw pattern scan
+    const keyMatch = s.match(/0x?[0-9a-fA-F]{64}/);
+    const addrMatch = s.match(/0x[0-9a-fA-F]{40}/);
+    if (keyMatch) {
+      return { key: norm0x64(keyMatch[0]), address: addrMatch?.[0] };
     }
-  }
-  return out;
-}
+    return { key: "" };
+  };
 
-/* try a candidate fn with both arg orders */
-async function tryDecoder(fnName: string, fn: any, bytes: Uint8Array, pass: string): Promise<string | null> {
-  if (typeof fn !== "function") return null;
-
-  // Skip obvious non-decoders
-  if (/^(default|initSync|__wbg_init)$/.test(fnName)) return null;
-
-  // Only try names that look promising
-  if (!/(decode|wallet|image|key)/i.test(fnName)) return null;
-
-  // Attempt (bytes, pass) then (pass, bytes)
-  const attempts: Array<[string, any[]]> = [
-    [`${fnName}(bytes, pass)`, [bytes, pass]],
-    [`${fnName}(pass, bytes)`, [pass, bytes]],
-  ];
-
-  for (const [label, args] of attempts) {
-    try {
-      const raw = await fn.apply(null, args);
-      const out = safeParse(raw);
-      const key = extractKey(out);
-      if (key) {
-        uiLog("[Condor] decode succeeded", { via: label });
-        return key;
+  const walk = (v: any): { key: string; address?: string } => {
+    if (v == null) return { key: "" };
+    if (typeof v === "string") return tryFromString(v);
+    if (typeof v === "number" || typeof v === "boolean") return { key: "" };
+    if (Array.isArray(v)) {
+      for (const el of v) {
+        const r = walk(el);
+        if (r.key) return r;
       }
-      uiLog("[Condor] decode returned no key", { via: label, typeof: typeof raw });
-    } catch (e: any) {
-      // Verbose but helpful on first run
-      uiLog("[Condor] decode attempt failed", { via: label, error: String(e?.message || e) });
+      return { key: "" };
     }
-  }
-  return null;
+    if (typeof v === "object") {
+      if (seen.has(v)) return { key: "" };
+      seen.add(v);
+
+      // common fields first
+      const key =
+        v.key ?? v.private_key ?? v.priv ?? v.secret ?? v.sk ?? v.pk ?? v.PrivateKey ?? v.PRIVATE_KEY;
+      const addr = v.address ?? v.addr ?? v.Address ?? v.ADDRESS;
+
+      if (isHex(/^0x?[0-9a-fA-F]{64}$/, key)) {
+        return { key: norm0x64(key), address: isHex(/^0x[0-9a-fA-F]{40}$/, addr) ? addr : undefined };
+      }
+
+      // otherwise recurse properties
+      for (const val of Object.values(v)) {
+        const r = walk(val);
+        if (r.key) return r;
+      }
+      return { key: "" };
+    }
+    return { key: "" };
+  };
+
+  const r = walk(root);
+  if (!r.key) throw new Error("Decode returned object without a private key");
+  return r;
+}
+
+/* ---------------- loader ---------------- */
+
+export async function loadCondorWallet(): Promise<CondorExports> {
+  if (ready) return ready;
+  ready = (async () => {
+    console.info("[Condor] loading wasm module", { jsUrl: JS_URL, wasmUrl: WASM_URL });
+    const mod: CondorExports = await import(/* @vite-ignore */ `${JS_URL}?v=${Date.now()}`);
+    // prefer object init to avoid the “deprecated parameters” warning
+    if (typeof mod.default === "function") {
+      await mod.default({ module_or_path: WASM_URL });
+    }
+    // small visibility for debugging without leaking secrets
+    const keys = Object.keys(mod as any);
+    console.info("[Condor] wasm exports available", {
+      keys,
+      functions: keys.filter((k) => typeof (mod as any)[k] === "function"),
+    });
+    return mod;
+  })();
+  return ready;
 }
 
 /* ---------------- public API ---------------- */
-export async function decodePngToPrivateKey(
-  png: File | ArrayBuffer | Uint8Array,
-  passphrase: string
-): Promise<string> {
-  const mod = await loadCondorWallet();
-  const bytes = await toBytes(png);
 
-  // Known names first
-  const known: Array<[string, any]> = [
-    ["decode_png", mod.decode_png],
-    ["wallet_from_image_with_password", mod.wallet_from_image_with_password],
-    ["decode_wallet_from_image", mod.decode_wallet_from_image],
-    ["wallet_from_key", mod.wallet_from_key],
+export async function decodePngToPrivateKey(png: File | ArrayBuffer, passphrase: string): Promise<string> {
+  const mod = await loadCondorWallet();
+  const bytes = png instanceof File ? new Uint8Array(await png.arrayBuffer()) : new Uint8Array(png);
+
+  // try the most reliable order first
+  const attempts: Array<{ fn: keyof CondorExports; args: any[] }> = [
+    { fn: "decode_png", args: [bytes, passphrase] },
+    { fn: "decode_wallet_from_image", args: [bytes, passphrase] },
+    { fn: "wallet_from_image_with_password", args: [bytes, passphrase] },
+
+    // some builds flip the order (will throw on wrong order — that’s OK)
+    { fn: "wallet_from_image_with_password", args: [passphrase, bytes] },
+
+    // rarely, wallet_from_key returns similar JSON in decoder builds
+    { fn: "wallet_from_key", args: [bytes, passphrase] },
+    { fn: "wallet_from_key", args: [passphrase, bytes] },
   ];
 
-  for (const [name, fn] of known) {
-    const key = await tryDecoder(name, fn, bytes, passphrase);
-    if (key) return key;
+  for (const { fn, args } of attempts) {
+    const f = (mod as any)[fn];
+    if (typeof f !== "function") continue;
+    try {
+      const out = await f(...args);
+      const { key } = deepExtractKeyAndAddress(out);
+      console.info("[Condor] decode succeeded", { via: `${String(fn)}(${typeof args[0]}, ${typeof args[1]})` });
+      return key;
+    } catch (e: any) {
+      // keep probing; log *which* path failed, but not values
+      console.info("[Condor] decode attempt failed", {
+        via: `${String(fn)}(${typeof args[0]}, ${typeof args[1]})`,
+        error: e?.message ?? String(e),
+      });
+    }
   }
 
-  // Discovery (top-level + nested)
-  const all = discoverFns(mod, 2);
-  const tried = new Set(known.map(([n]) => n));
-  const candidates = all
-    .filter(([n]) => !tried.has(n))
-    .filter(([n]) => /(decode|wallet|image|key)/i.test(n));
-
-  if (candidates.length) {
-    uiLog("[Condor] trying discovered decoder candidates", { candidates: candidates.map(([n]) => n) });
-  }
-
-  for (const [name, fn] of candidates) {
-    const key = await tryDecoder(name, fn, bytes, passphrase);
-    if (key) return key;
-  }
-
-  try {
-    const fnKeys = all.map(([n]) => n);
-    uiLog("[Condor] decoder exports not found", { tried: known.map(([n]) => n), discovered: fnKeys });
-  } catch {}
   throw new Error(
-    "Decoder exports not found (tried: decode_png, wallet_from_image_with_password, decode_wallet_from_image, wallet_from_key)"
+    "Decoder exports not recognized on this build (tried: decode_png, decode_wallet_from_image, wallet_from_image_with_password, wallet_from_key)"
   );
 }
 
-export function privateKeyToWallet(pk: string, provider: any): ethers.Wallet {
+export function privateKeyToWallet(pk: string, provider: ethers.AbstractProvider): ethers.Wallet {
   const normalized = pk.startsWith("0x") ? pk : `0x${pk}`;
-  // @ts-ignore v5/v6 compatible
+  // @ts-ignore v5/v6
   return new (ethers as any).Wallet(normalized, provider);
 }
