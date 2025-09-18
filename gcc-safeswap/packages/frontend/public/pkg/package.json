@@ -1,0 +1,15 @@
+{
+  "name": "condor_wallet",
+  "type": "module",
+  "version": "0.1.0",
+  "files": [
+    "condor_wallet_bg.wasm",
+    "condor_wallet.js",
+    "condor_wallet.d.ts"
+  ],
+  "main": "condor_wallet.js",
+  "types": "condor_wallet.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}
