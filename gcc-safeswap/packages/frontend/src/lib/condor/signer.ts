@@ -90,7 +90,7 @@ export class CondorSigner {
     const limit = (
       estBig.mul
         ? estBig.mul(120).div(100)
-        : ((estBig as bigint) * 120n) / 100n
+        : (estBig * 120n) / 100n
     ) as any;
 
     return {
