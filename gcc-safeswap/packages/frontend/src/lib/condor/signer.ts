@@ -15,16 +15,20 @@ type ProviderLike =
   | ethers.AbstractProvider;                // v6 base
 
 function toProvider(p?: ProviderLike): any {
+  const url =
+    (import.meta as any)?.env?.VITE_BSC_RPC ??
+    "https://bscrpc.pancakeswap.finance";
   if (!p) {
-    const url = (import.meta as any)?.env?.VITE_BSC_RPC ?? "https://bscrpc.pancakeswap.finance";
     // @ts-ignore
-    if (ethers?.providers?.JsonRpcProvider) return new (ethers as any).providers.JsonRpcProvider(url); // v5
+    if (ethers?.providers?.JsonRpcProvider)
+      return new (ethers as any).providers.JsonRpcProvider(url); // v5
     return new (ethers as any).JsonRpcProvider(url); // v6
   }
   if (typeof p === "string") {
     // @ts-ignore
-    if (ethers?.providers?.JsonRpcProvider) return new (ethers as any).providers.JsonRpcProvider(p);
-    return new (ethers as any).JsonRpcProvider(p);
+    if (ethers?.providers?.JsonRpcProvider)
+      return new (ethers as any).providers.JsonRpcProvider(p); // v5
+    return new (ethers as any).JsonRpcProvider(p); // v6
   }
   return p;
 }
@@ -45,4 +49,105 @@ export function getCondorWallet(providerLike?: ProviderLike): ethers.Wallet {
   const provider = toProvider(providerLike);
   // @ts-ignore v5/v6
   return new (ethers as any).Wallet(_pk, provider);
+}
+
+/** Back-compat: class used by older components (e.g., ConnectCondor). */
+export class CondorSigner {
+  privateKey: string;
+  wallet: ethers.Wallet;
+  provider: any;
+
+  constructor(pkHex: string, rpcOrProvider?: ProviderLike) {
+    this.privateKey = ensure0x64(pkHex);
+    this.provider = toProvider(rpcOrProvider);
+    // @ts-ignore v5/v6
+    this.wallet = new (ethers as any).Wallet(this.privateKey, this.provider);
+  }
+
+  address() {
+    return this.wallet.address;
+  }
+
+  /** Build a legacy (type 0) unsigned tx with a +20% gas buffer. */
+  async buildUnsignedLegacyTx(
+    to: string,
+    data: string = "0x",
+    value: string = "0x0"
+  ) {
+    const [net, nonce, gasPrice, est] = await Promise.all([
+      this.provider.getNetwork(),
+      this.provider.getTransactionCount(this.wallet.address, "latest"),
+      this.provider.getGasPrice(),
+      this.provider.estimateGas({ from: this.wallet.address, to, data, value }),
+    ]);
+
+    // +20% buffer (works for v5 BigNumber or v6 bigint)
+    const estBig = (ethers as any).getBigInt
+      ? (ethers as any).getBigInt(est)
+      : est.mul
+      ? est
+      : (est as any);
+    const limit = (
+      estBig.mul
+        ? estBig.mul(120).div(100)
+        : ((estBig as bigint) * 120n) / 100n
+    ) as any;
+
+    return {
+      to,
+      data,
+      value,
+      gasLimit: (ethers as any).toBeHex
+        ? (ethers as any).toBeHex(limit)
+        : limit,
+      gasPrice: (ethers as any).toBeHex
+        ? (ethers as any).toBeHex(gasPrice)
+        : gasPrice,
+      nonce: Number(nonce),
+      chainId: Number(net.chainId),
+      type: 0 as const,
+    };
+  }
+
+  async signRaw(unsigned: {
+    to: string;
+    data?: string;
+    value?: string;
+    gasLimit: string | any;
+    gasPrice: string | any;
+    nonce: number;
+    chainId: number;
+    type: 0;
+  }) {
+    const tx = {
+      to: unsigned.to,
+      data: unsigned.data ?? "0x",
+      value: (ethers as any).getBigInt
+        ? (ethers as any).getBigInt(unsigned.value ?? "0x0")
+        : unsigned.value,
+      gasLimit: (ethers as any).getBigInt
+        ? (ethers as any).getBigInt(unsigned.gasLimit)
+        : unsigned.gasLimit,
+      gasPrice: (ethers as any).getBigInt
+        ? (ethers as any).getBigInt(unsigned.gasPrice)
+        : unsigned.gasPrice,
+      nonce: unsigned.nonce,
+      chainId: unsigned.chainId,
+      type: 0 as const,
+    };
+    return await this.wallet.signTransaction(tx as any);
+  }
+
+  async sendRaw(raw: string): Promise<string> {
+    if (this.provider?.sendTransaction) {
+      const r = await this.provider.sendTransaction(raw);
+      return r?.hash ?? r;
+    }
+    if (this.provider?.broadcastTransaction) {
+      const r = await this.provider.broadcastTransaction(raw);
+      return r?.hash ?? r;
+    }
+    const hash = await this.provider.send("eth_sendRawTransaction", [raw]);
+    return hash;
+  }
 }
